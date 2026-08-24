@@ -123,7 +123,7 @@ def render_audio(src_wav: str, out_wav: str,
                  keep_ranges: Sequence[Range],
                  mute_ranges: Sequence[Range] = (),
                  beep_freq: float = 1000.0,
-                 beep_volume: float = 0.2,
+                 beep_volume: float = 0.12,
                  lead_silence: float = 0.0,
                  expect_duration: Optional[float] = None,
                  speed_pieces: Optional[Sequence[Tuple[float, float, float]]] = None

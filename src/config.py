@@ -152,6 +152,7 @@ class Config:
     # ---- 哔声提示音 ----
     beep_freq: float = 1000.0
     beep_duration: float = 30.0           # 单个敏感段最长一般不超过此值
+    beep_volume: float = 0.12             # 哔声音量（0~1，0.12≈12% 满幅；2026-08-24 按用户反馈从 0.2 调低）
 
     # ---- 封面样式（16:9 横屏，文字叠在画面上）----
     cover_style: str = "purple"            # 风格预设：purple / red / green / dark / gold
@@ -209,6 +210,7 @@ class Config:
             in ("1", "true", "yes"),
             channel_title=env("CHANNEL_TITLE", cls.channel_title),
             channel_desc=env("CHANNEL_DESC", cls.channel_desc),
+            beep_volume=float(env("BEEP_VOLUME", cls.beep_volume)),
         )
         # LLM Key 缺失时自动关闭
         if not cfg.llm_api_key:
