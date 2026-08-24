@@ -3,7 +3,28 @@
 > 视频一键自动剪辑 Skill：字幕烧录 / 敏感信息消音 / 压缩停顿 / 删议价 / 删企微隐私界面 / 封面 + 片头。
 > 本文档给**在另一台电脑的 WorkBuddy 上安装使用**的同事看。
 
-## 一、安装步骤（3 步，约 5 分钟）
+## 零、快速安装（推荐 · Git 方式）
+
+仓库链接：**`https://github.com/wufrancis16-sketch/video-ai-cut.git`**
+
+在命令行执行（自动下载到 WorkBuddy skills 目录）：
+
+```bash
+# 1. 克隆技能（没有 git 先装：https://git-scm.com/download/win）
+git clone https://github.com/wufrancis16-sketch/video-ai-cut.git "%USERPROFILE%\.workbuddy\skills\video-ai-cut"
+
+# 2. 装依赖（Python 3.10+）
+pip install -r "%USERPROFILE%\.workbuddy\skills\video-ai-cut\requirements.txt"
+
+# 3. 装 FFmpeg 并加入 PATH（必装）→ 然后自检
+python "%USERPROFILE%\.workbuddy\skills\video-ai-cut\verify_skill.py"
+```
+
+**以后升级**：在技能目录执行 `git pull` 即可拿到最新版。
+
+---
+
+## 一、安装步骤（3 步，约 5 分钟 · 离线 zip 方式）
 
 ### 第 1 步：解压技能到 WorkBuddy skills 目录
 
