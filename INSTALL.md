@@ -1,26 +1,44 @@
 # video-ai-cut 安装指南（同事电脑部署）
 
 > 视频一键自动剪辑 Skill：字幕烧录 / 敏感信息消音 / 压缩停顿 / 删议价 / 删企微隐私界面 / 封面 + 片头。
-> 本文档给**在另一台电脑的 WorkBuddy 上安装使用**的同事看。
+> 兼容 **WorkBuddy** 与 **Codex**（通用 SKILL.md 标准），复制链接即可安装。
 
-## 零、快速安装（推荐 · Git 方式）
+## 零、一键安装（推荐 · 复制即装）
 
 仓库链接：**`https://github.com/wufrancis16-sketch/video-ai-cut.git`**
 
-在命令行执行（自动下载到 WorkBuddy skills 目录）：
+**Windows** 在命令行粘贴这一条（自动装到 WorkBuddy + Codex + 装依赖 + 检测 FFmpeg + 自检）：
 
-```bash
-# 1. 克隆技能（没有 git 先装：https://git-scm.com/download/win）
-git clone https://github.com/wufrancis16-sketch/video-ai-cut.git "%USERPROFILE%\.workbuddy\skills\video-ai-cut"
-
-# 2. 装依赖（Python 3.10+）
-pip install -r "%USERPROFILE%\.workbuddy\skills\video-ai-cut\requirements.txt"
-
-# 3. 装 FFmpeg 并加入 PATH（必装）→ 然后自检
-python "%USERPROFILE%\.workbuddy\skills\video-ai-cut\verify_skill.py"
+```bat
+git clone --depth 1 https://github.com/wufrancis16-sketch/video-ai-cut.git "%USERPROFILE%\.workbuddy\skills\video-ai-cut" && cd "%USERPROFILE%\.workbuddy\skills\video-ai-cut" && install.bat
 ```
 
-**以后升级**：在技能目录执行 `git pull` 即可拿到最新版。
+GitHub 慢/打不开时用镜像：
+
+```bat
+git clone --depth 1 https://ghproxy.com/https://github.com/wufrancis16-sketch/video-ai-cut.git "%USERPROFILE%\.workbuddy\skills\video-ai-cut" && cd "%USERPROFILE%\.workbuddy\skills\video-ai-cut" && install.bat
+```
+
+**macOS / Linux**：
+
+```bash
+git clone --depth 1 https://github.com/wufrancis16-sketch/video-ai-cut.git ~/.workbuddy/skills/video-ai-cut && cd ~/.workbuddy/skills/video-ai-cut && bash install.sh
+```
+
+> `install.bat` / `install.sh` 自动完成：① 装到 WorkBuddy 技能目录 ② 装到 Codex 技能目录 ③ `pip install -r requirements.txt` ④ 检测/装 FFmpeg ⑤ `verify_skill.py` 自检（9 项全 PASS 即可用）。
+> 前提：装好 Git + Python 3.10+（勾选 Add to PATH）。
+
+**装完怎么用**：
+
+| 平台 | 用法 |
+|------|------|
+| WorkBuddy | 新对话直接说「帮我剪辑这个视频」并拖入视频 |
+| Codex | 新会话输入 `$video-ai-cut` 或自然描述剪辑需求 |
+| 命令行 | `python <技能目录>\main.py 视频.mp4` |
+
+**升级**：`git -C ~/.workbuddy/skills/video-ai-cut pull`（Codex 目录同样）。
+
+**详细说明**：见仓库根 `INSTALL-QUICK.md`（复制即装速查）。
 
 ---
 

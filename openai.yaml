@@ -1,0 +1,5 @@
+# Codex CLI 专属元数据（可选，其他平台如 WorkBuddy/Claude Code 会忽略此文件）
+# 参考: https://agentsdirectory.dev/agents/codex/guides/using-codex-skills
+display_name: "video-ai-cut"
+description: "视频一键全自动剪辑：字幕烧录/敏感消音/压缩停顿/删议价/删企微隐私界面/封面片头/视频号草稿同步"
+icon: "🎬"
