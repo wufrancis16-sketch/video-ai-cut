@@ -1,0 +1,14 @@
+# 运行中间产物
+_work/
+cache/
+__pycache__/
+*.pyc
+*.pyo
+# 视频号登录态 / 二维码（含敏感凭据，绝不提交）
+channels_state.json
+channels_qr.png
+# 临时调试
+debug_ocr.py
+_probe_*.py
+# 大文件（字体走系统路径）
+msyh.ttc

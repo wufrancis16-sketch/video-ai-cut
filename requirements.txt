@@ -1,0 +1,22 @@
+# AI Video Auto Editor - 依赖
+# 安装：pip install -r requirements.txt  （需先安装 FFmpeg 并加入 PATH）
+
+# 语音识别（本地 ASR，faster-whisper 自带模型下载）
+faster-whisper
+requests
+
+# 大语言模型 API（OpenAI 兼容，用于敏感语义判断 / 议价分析 / 封面标题 / 视觉分类；缺失自动降级）
+openai
+
+# 图像处理（封面绘制、抽帧、OCR 前处理）
+pillow
+numpy
+
+# 高风险画面检测：企业微信左栏 OCR（中文 PP-OCR，纯 pip 包，无需外部 tesseract 二进制）
+# rapidocr-onnxruntime 会自动拉取 onnxruntime / opencv / shapely 等依赖
+rapidocr-onnxruntime
+
+# 【可选】视频号草稿自动同步（`main.py sync` / render 后自动上传）。
+# 不装不影响剪辑主流程（channel_sync 惰性导入，缺依赖只提示不报错）。
+# 用本机 Chrome/Edge 驱动，装后无需 `playwright install` 下载浏览器。
+playwright
