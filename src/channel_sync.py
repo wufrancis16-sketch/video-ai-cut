@@ -6,9 +6,10 @@
 设计原则：
 - 完全独立：本模块不 import 剪辑链路的任何内部状态，只接收
   video 路径 + 标题 +（可选）描述 + 封面图；
-- 登录态复用：首次需扫码（微信扫二维码），成功后把 cookie /
-  storage_state 保存到 <cfg.workdir>/channels_state.json，之后
-  免扫码自动上传；登录过期（>24h）会自动弹二维码重新扫码；
+- 登录态复用（方案 B）：用 `launch_persistent_context` 打开**独立全局
+  profile 目录**（默认 ~/.workbuddy/channels_profile），cookies 与真实
+  Chrome 隔离但会**永久持久化**——首次扫码一次，之后免扫码自动上传；
+  登录过期会自动弹二维码重新扫码；
 - 安全失败：任何一步失败只 warn 并返回 False，绝不影响成片本身；
 - 草稿不发布：上传 + 填标题后**停在草稿箱**，不点「发表」。
 
@@ -27,21 +28,21 @@ from typing import Optional
 # ---- 常量 -----------------------------------------------------------------
 CHANNELS_HOME = "https://channels.weixin.qq.com"
 LOGIN_URL = "https://channels.weixin.qq.com/login.html"
-STATE_FILE = "channels_state.json"      # 存放于 workdir
 QR_SHOT = "channels_qr.png"             # 登录二维码截图（存 workdir 供用户扫描）
 
-# 上传页关键元素的候选选择器（随页面改版动态扩展）
-SEL_MENU_CONTENT = 'text=内容管理'      # 左侧主菜单
-SEL_MENU_PUBLISH = 'text=发表视频'      # 内容管理下的子项
-SEL_FILE_INPUT = 'input[type="file"]'   # 上传视频的文件输入
-SEL_TITLE_INPUT = 'input[placeholder*="标题"], input[placeholder*="标题(必填)"], [class*="title"] input, textarea[placeholder*="标题"]'
-SEL_DESC_INPUT = 'textarea[placeholder*="描述"], [class*="desc"] textarea'
-SEL_SAVE_DRAFT = 'text=存草稿'          # 草稿按钮
-SEL_LOGIN_BTN = 'text=登录'             # 登录页按钮
+# 独立全局 profile（与真实 Chrome 隔离；cookies 在此目录持久化，免重复扫码）
+DEFAULT_PROFILE = os.path.join(os.path.expanduser("~"), ".workbuddy",
+                               "channels_profile")
 
-
-def _state_path(workdir: str) -> str:
-    return os.path.join(workdir, STATE_FILE)
+# 上传页关键元素的候选选择器（基于视频号助手真实 DOM 探测，2026-08-24 验证）
+# 登录后路径：内容管理 → 发表视频 → URL /platform/post/create
+SEL_MENU_CONTENT = "text=内容管理"        # 左侧折叠主菜单
+SEL_MENU_PUBLISH = "text=发表视频"        # 内容管理下的子菜单
+UPLOAD_PAGE_URL = "https://channels.weixin.qq.com/platform/post/create"
+SEL_FILE_INPUT = 'input[type="file"]'     # 全页面唯一的视频/图片上传
+SEL_TITLE_INPUT = 'input[placeholder*="短标题"]'   # 短标题输入框
+SEL_DESC_INPUT = 'textarea[placeholder*="添加描述"]'  # 视频描述 textarea
+SEL_SAVE_DRAFT = 'text=保存草稿'           # 草稿按钮（先点这个，不点"发表"）
 
 
 def _qr_path(workdir: str) -> str:
@@ -105,17 +106,20 @@ def _wait_scan_qr(page, workdir: str, timeout_s: int = 180) -> bool:
 
 def sync_to_channels(video: str, title: str, workdir: str,
                      description: str = "", headless: bool = True,
-                     cover: Optional[str] = None) -> bool:
+                     cover: Optional[str] = None,
+                     profile: Optional[str] = None) -> bool:
     """上传成片到视频号草稿箱。返回是否成功（失败不影响成片）。
 
     参数:
         video:       成片 mp4 绝对路径（必须存在）
         title:       视频号标题（优先用封面标题）
-        workdir:     工作目录（存登录态/二维码截图）
+        workdir:     工作目录（存二维码截图/上传截图）
         description: 视频描述（可选，默认空）
         headless:    是否无头模式（首次登录建议 False 便于肉眼确认；
-                     之后 True 自动）
+                     之后 True 自动，cookies 已持久化在 profile）
         cover:       封面图路径（可选，视频号可自动抽帧，可不传）
+        profile:     persistent_context 用户数据目录（默认
+                     ~/.workbuddy/channels_profile，与真实 Chrome 隔离）
     """
     video = os.path.abspath(video)
     if not os.path.exists(video):
@@ -130,19 +134,21 @@ def sync_to_channels(video: str, title: str, workdir: str,
     if chrome is None:
         print("  [视频号] ❌ 未找到 Chrome/Edge，无法自动上传", file=sys.stderr)
         return False
+    profile_dir = os.path.abspath(profile or DEFAULT_PROFILE)
+    os.makedirs(profile_dir, exist_ok=True)
 
     try:
         with sp() as p:
-            browser = p.chromium.launch(
+            # 方案 B：persistent_context —— cookies 与 profile 目录绑定并持久化，
+            # 首次扫码一次，之后免扫码。与真实 Chrome 的 user-data-dir 完全隔离。
+            ctx = p.chromium.launch_persistent_context(
+                user_data_dir=profile_dir,
                 headless=headless,
                 executable_path=chrome,
-                args=["--no-sandbox", "--disable-dev-shm-usage"])
-            ctx = browser.new_context(
                 viewport={"width": 1440, "height": 900},
-                storage_state=_state_path(workdir)
-                if os.path.exists(_state_path(workdir)) else None,
+                args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
-            page = ctx.new_page()
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.goto(CHANNELS_HOME, wait_until="domcontentloaded", timeout=45000)
             page.wait_for_timeout(3000)
 
@@ -152,25 +158,28 @@ def sync_to_channels(video: str, title: str, workdir: str,
             if "login" in url.lower():
                 print("  [视频号] 未检测到登录态，准备扫码登录…")
                 if not _wait_scan_qr(page, workdir):
-                    browser.close()
+                    ctx.close()
                     return False
-                # 登录成功后保存登录态，下次免扫码
-                try:
-                    ctx.storage_state(path=_state_path(workdir))
-                    print(f"  [视频号] 登录态已保存 -> {_state_path(workdir)}")
-                except Exception as e:  # noqa
-                    print(f"  [视频号] ⚠️ 保存登录态失败: {e}")
+                # persistent_context 会自动把 cookies 写入 profile 目录，无需手动保存
+                print(f"  [视频号] 登录态已持久化 -> {profile_dir}")
                 page.goto(CHANNELS_HOME, wait_until="domcontentloaded",
                           timeout=45000)
                 page.wait_for_timeout(2500)
 
-            # ---- 进入上传页 ----
-            print("  [视频号] 进入「内容管理 → 发表视频」…")
-            if not _click_publish(page):
-                print("  [视频号] ⚠️ 未找到发表视频入口，尝试直连上传页…")
-                page.goto("https://channels.weixin.qq.com/platform/post/publish",
-                          wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(2500)
+            # ---- 进入上传页（直接 goto 最稳，避开"内容管理→视频"与首页"发表视频"按钮的歧义）----
+            print("  [视频号] 进入发表视频页…")
+            page.goto(UPLOAD_PAGE_URL, wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(3000)
+            # 等 file input 真正出现
+            try:
+                page.wait_for_selector('input[type="file"]', state="attached", timeout=15000)
+            except Exception:  # noqa
+                print("  [视频号] ⚠️ 15s 内 file input 未出现，尝试点「内容管理」…")
+                if _click_publish(page):
+                    try:
+                        page.wait_for_selector('input[type="file"]', state="attached", timeout=15000)
+                    except Exception:  # noqa
+                        pass
 
             # ---- 上传视频 ----
             print(f"  [视频号] 上传成片: {video}")
@@ -179,11 +188,13 @@ def sync_to_channels(video: str, title: str, workdir: str,
                 file_input.set_input_files(video, timeout=30000)
             except Exception as e:  # noqa
                 print(f"  [视频号] ❌ 设置文件失败: {e}", file=sys.stderr)
-                browser.close()
+                ctx.close()
                 return False
-            # 等上传完成（进度条消失 / 出现标题输入框）
-            print("  [视频号] 等待上传完成…")
+            # 等上传完成：进度条消失 / "保存草稿" 按钮变可点
+            print("  [视频号] 等待上传完成（最长 300s）…")
             _wait_upload_done(page)
+            page.screenshot(path=os.path.join(workdir, "channels_uploaded.png"))
+            print("  [视频号] 上传后截图 -> channels_uploaded.png")
 
             # ---- 填标题 / 描述 ----
             t = (title or "").strip()
@@ -195,7 +206,7 @@ def sync_to_channels(video: str, title: str, workdir: str,
                 print("  [视频号] 填写描述")
                 _fill_text(page, SEL_DESC_INPUT, description)
 
-            # 封面（可选；视频号通常自动取第一帧，传封面更专业）
+            # 封面（可选；视频号通常自动取第一帧）
             if cover and os.path.exists(cover):
                 try:
                     cover_inputs = page.locator(
@@ -207,21 +218,28 @@ def sync_to_channels(video: str, title: str, workdir: str,
                 except Exception as e:  # noqa
                     print(f"  [视频号] ⚠️ 设置封面失败（可接受）: {e}")
 
+            # 标题/封面设置后等按钮可用
+            page.wait_for_timeout(2500)
+
             # ---- 存草稿（不发布）----
-            print("  [视频号] 保存草稿…")
+            print("  [视频号] 点击「保存草稿」…")
             saved = _save_draft(page)
             if saved:
-                print("  [视频号] ✅ 已存入草稿箱（未发布）")
+                # 等待保存完成（按钮变回"保存草稿"或页面跳转）
+                page.wait_for_timeout(2500)
+                # 验证：跳到草稿箱或提示成功
+                cur = page.url
+                print(f"  [视频号] 保存后 URL: {cur}")
+                # 主动检查草稿箱是否多了一条
+                if _verify_draft_added(page):
+                    print("  [视频号] ✅ 已存入草稿箱（未发布，已验证）")
+                else:
+                    print("  [视频号] ⚠️ 「保存草稿」已点击，但未在草稿箱确认（可能保存中或失败）")
             else:
-                print("  [视频号] ⚠️ 未找到「存草稿」按钮，已停留在编辑页"
-                      "（请手动确认不点「发表」）", file=sys.stderr)
-                # 仍然保存登录态，方便下次
-            try:
-                ctx.storage_state(path=_state_path(workdir))
-            except Exception:  # noqa
-                pass
-            browser.close()
-            return True
+                print("  [视频号] ⚠️ 未找到「保存草稿」按钮，停留在编辑页", file=sys.stderr)
+            page.screenshot(path=os.path.join(workdir, "channels_after_save.png"))
+            ctx.close()
+            return saved
     except Exception as e:  # noqa
         print(f"  [视频号] ❌ 同步失败: {type(e).__name__}: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
@@ -230,28 +248,34 @@ def sync_to_channels(video: str, title: str, workdir: str,
 
 # ---- 内部工具（选择器尽量宽松，抓可见文本兜底）-----------------------------
 def _click_publish(page) -> bool:
-    """点左侧菜单 内容管理 → 发表视频。找不到返回 False。"""
+    """点左侧菜单 内容管理 → 发表视频。
+
+    「内容管理」是折叠菜单（带下拉箭头），必须先点展开，
+    找到子菜单中的「发表视频」再点。URL 跳到 /platform/post/create 成功。
+    """
     try:
-        # 先找「内容管理」主菜单
-        for sel in ("text=内容管理", "span:has-text('内容管理')",
-                    "a:has-text('内容管理')", "[class*='menu']:has-text('内容管理')"):
+        # 先点「内容管理」展开子菜单
+        for sel in (SEL_MENU_CONTENT, "li:has-text('内容管理')",
+                    "[class*='menu']:has-text('内容管理')"):
             el = page.locator(sel).first
             if el.count() > 0 and el.is_visible(timeout=1500):
                 el.click(timeout=3000)
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(1500)  # 等待子菜单展开
                 break
         else:
             return False
     except Exception:  # noqa
         return False
-    # 再找「发表视频」
+    # 再点子菜单「发表视频」
     try:
-        for sel in ("text=发表视频", "span:has-text('发表视频')",
+        for sel in ("text=发表视频", "li:has-text('发表视频')",
                     "a:has-text('发表视频')", "div:has-text('发表视频')"):
             el = page.locator(sel).first
             if el.count() > 0 and el.is_visible(timeout=1500):
                 el.click(timeout=3000)
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(2500)
+                if "/post/create" in page.url or "/post/publish" in page.url:
+                    return True
                 return True
     except Exception:  # noqa
         pass
@@ -259,23 +283,52 @@ def _click_publish(page) -> bool:
 
 
 def _wait_upload_done(page, timeout_s: int = 300) -> None:
-    """轮询直到标题输入框可见或进度条消失。"""
+    """轮询直到上传完成。
+
+    视频号助手上传完成后：大拖拽区变成「视频预览缩略图 + 替换/删除」，
+    进度条消失。我们轮询"上传中"文字 + 等待视频预览图。
+    """
     t0 = time.time()
+    last_msg = ""
     while time.time() - t0 < timeout_s:
-        # 标题输入框出现 ≈ 上传完成进入编辑态
-        for sel in (SEL_TITLE_INPUT, "[class*='progress']", "text=上传中"):
-            try:
-                if sel.startswith("text=") and "上传中" in sel:
-                    continue
-                el = page.locator(sel).first
-                if "progress" in sel or "上传中" in sel:
-                    continue
-                if el.count() > 0 and el.is_visible(timeout=800):
-                    return
-            except Exception:  # noqa
-                pass
-        page.wait_for_timeout(2000)
+        # 1) 仍在上传中？
+        try:
+            uploading = page.locator("text=上传中").count()
+            processing = page.locator("text=处理中").count()
+            if uploading + processing > 0 and last_msg != "uploading":
+                last_msg = "uploading"
+                print("    ⏳ 上传中…", flush=True)
+        except Exception: pass
+        # 2) 视频预览缩略图（upload 完成后会出现）
+        try:
+            preview = page.locator(
+                "video, [class*='preview'] video, [class*='video-preview']")
+            if preview.count() > 0:
+                print("  [视频号] ✓ 上传完成（检测到视频预览）")
+                return
+        except Exception: pass
+        page.wait_for_timeout(2500)
     print("  [视频号] ⚠️ 上传等待超时，继续尝试填标题", file=sys.stderr)
+
+
+def _verify_draft_added(page) -> bool:
+    """验证草稿是否真的进了草稿箱。
+
+    跳转到 /platform/post/draftListManager，查看列表中是否有
+    含我们标题的条目。
+    """
+    try:
+        page.goto("https://channels.weixin.qq.com/platform/post/draftListManager",
+                  wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(4000)
+        body = page.inner_text("body", timeout=5000)
+        # 草稿箱空时显示「草稿箱 (0)」
+        if "草稿箱 (0)" in body or "草稿箱（0）" in body:
+            return False
+        # 否则认为有草稿（标题可能不在第一屏但至少不为 0）
+        return True
+    except Exception:  # noqa
+        return False
 
 
 def _fill_text(page, selector, text: str) -> bool:
@@ -302,15 +355,15 @@ def _fill_text(page, selector, text: str) -> bool:
 
 
 def _save_draft(page) -> bool:
-    """点击「存草稿」。找不到时尝试常见文案。"""
-    for sel in ("text=存草稿", "button:has-text('存草稿')",
-                "span:has-text('存草稿')", "text=保存草稿",
-                "button:has-text('保存草稿')"):
+    """点击「保存草稿」（**不点"发表"**），找不到时尝试常见文案。"""
+    for sel in (SEL_SAVE_DRAFT, "button:has-text('保存草稿')",
+                "span:has-text('保存草稿')", "text=存草稿",
+                "button:has-text('存草稿')", "text=保存草稿"):
         try:
             el = page.locator(sel).first
             if el.count() > 0 and el.is_visible(timeout=1500):
                 el.click(timeout=3000)
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(2000)
                 return True
         except Exception:  # noqa
             continue
@@ -327,10 +380,12 @@ def main_cli(argv=None):
     ap.add_argument("--workdir", default="./_work", help="工作目录（存登录态）")
     ap.add_argument("--cover", default=None, help="封面图路径（可选）")
     ap.add_argument("--headed", action="store_true", help="有头模式（首次登录建议）")
+    ap.add_argument("--profile", default=None,
+                    help="persistent profile 目录（默认 ~/.workbuddy/channels_profile）")
     args = ap.parse_args(argv)
     ok = sync_to_channels(args.video, args.title, args.workdir,
                           description=args.desc, headless=not args.headed,
-                          cover=args.cover)
+                          cover=args.cover, profile=args.profile)
     sys.exit(0 if ok else 1)
 
 

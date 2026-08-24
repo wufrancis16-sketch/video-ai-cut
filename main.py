@@ -193,7 +193,8 @@ def _cmd_sync(args):
         video, title, wd,
         description=getattr(args, "desc", "") or "",
         headless=not getattr(args, "headed", False),
-        cover=getattr(args, "cover", None))
+        cover=getattr(args, "cover", None),
+        profile=getattr(args, "profile", None))
     sys.exit(0 if ok else 1)
 
 
@@ -429,6 +430,8 @@ def main():
         ps.add_argument("--cover", default=None, help="封面图路径（可选）")
         ps.add_argument("--headed", action="store_true",
                         help="有头模式（首次登录建议开启，便于扫码确认）")
+        ps.add_argument("--profile", default=None,
+                        help="persistent profile 目录（默认 ~/.workbuddy/channels_profile）")
         _add_common(ps)
 
         args = parser.parse_args(raw)
