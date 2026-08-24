@@ -45,11 +45,14 @@
 
 ## 安装
 
-```bash
-# 1. 安装 FFmpeg（Windows 推荐 scoop/winget，或官网下载加入 PATH）
-winget install ffmpeg
+**分平台安装说明**（WorkBuddy 用户 / Codex 用户）：见 **[`INSTALL-PLATFORMS.md`](INSTALL-PLATFORMS.md)**（一键 clone + install.bat / install.sh，自动装依赖 + 检测 FFmpeg + 自检）。
 
-# 2. 安装 Python 依赖
+```bash
+# 快速安装（自动克隆到当前平台技能目录 + 装依赖 + 自检）
+# Windows: git clone --depth 1 https://github.com/wufrancis16-sketch/video-ai-cut.git "%USERPROFILE%\.workbuddy\skills\video-ai-cut" && cd "%USERPROFILE%\.workbuddy\skills\video-ai-cut" && install.bat
+# macOS/Linux: git clone --depth 1 https://github.com/wufrancis16-sketch/video-ai-cut.git ~/.workbuddy/skills/video-ai-cut && cd ~/.workbuddy/skills/video-ai-cut && bash install.sh
+
+# 手动安装（FFmpeg 需自行装好并加入 PATH）
 pip install -r requirements.txt
 ```
 
