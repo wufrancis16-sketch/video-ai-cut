@@ -99,6 +99,49 @@ python main.py "D:\视频\xxx.mp4"
 - 长视频（数十分钟）也可处理，渲染用 QSV 硬件加速约 10 分钟。
 - 大模型 API（openai 兼容）**可选**：不配 Key 会自动降级为关键词检测，封面标题用首句。
 
+## 三.5、视频号草稿同步（打通流程）
+
+> 把剪辑好的成片自动上传到**微信视频号草稿箱**（只存草稿，**不发布**）。
+> 原理：Playwright 驱动本机 Chrome/Edge 操作视频号助手网页版（`channels.weixin.qq.com`），
+> 登录态用独立 profile 目录持久化（`~/.workbuddy/channels_profile`，与真实 Chrome 隔离）。
+
+### 前置
+
+```bash
+pip install playwright   # 已含在 requirements.txt；用本机 Chrome，无需 playwright install
+```
+
+### 首次使用（只需扫码一次）
+
+```bash
+python main.py sync "成片.mp4" --title "标题" --headed --workdir <workdir>
+```
+
+- 会弹出浏览器窗口 → 用手机微信扫二维码登录视频号助手 → 自动上传 → 自动点「保存草稿」
+- 登录态写入 `~/.workbuddy/channels_profile`，**之后永久免扫码**
+
+### 之后每次使用（免扫码）
+
+```bash
+python main.py sync "成片.mp4" --title "标题" --workdir <workdir>
+```
+
+### 全自动模式（render 后自动同步）
+
+```bash
+AVEditor_SYNC_CHANNEL_ENABLED=true python main.py "视频.mp4" --cover-title "标题"
+```
+
+### 验证与注意事项
+
+| 项 | 说明 |
+|----|------|
+| 确认成功 | 脚本会跳转草稿箱页解析「草稿箱 (N)」，**N > 0 才报成功**（不模糊匹配） |
+| 上传耗时 | 56MB 视频需等封面/描述生成完成，最长等待 15 分钟（正常 5-10 分钟） |
+| 标题 | 默认用 `--title`；视频号可能自动补充/改写标题，可在草稿箱手动改 |
+| 不发布 | 只点「保存草稿」，绝不点「发表」 |
+| 换账号 | 删除 `~/.workbuddy/channels_profile` 目录后重新 `--headed` 扫码 |
+
 ## 四、常见问题
 
 | 问题 | 解决 |
@@ -108,3 +151,6 @@ python main.py "D:\视频\xxx.mp4"
 | 出现两行字幕 | 播放器同时加载了外挂 SRT 与烧录字幕，把同名 `.srt` 移走或重命名即可 |
 | OCR 检测很慢 | 正常，40 分钟视频全片扫描约 20-40 分钟，属召回优先设计 |
 | 想彻底删掉企微段 | 高置信自动删；中置信写入待确认清单，`--skip-review` 则保留不删 |
+| sync 报「未检测到登录态」 | 用 `--headed` 重跑扫码一次（headless 模式登录态可能不被服务端认可） |
+| sync 报「草稿箱数仍为 0」 | 上传处理未完成就点了保存；重跑一次（等待逻辑已设 15 分钟上限） |
+| sync 一直扫码超时 | 确认弹出的浏览器窗口可见；二维码截图在工作目录 `channels_qr.png` |

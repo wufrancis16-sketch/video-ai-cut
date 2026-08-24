@@ -19,6 +19,27 @@
 | 6 | 议价内容整段删除 | 价格/报价/折扣/付款等商务谈判；LLM 上下文分析优先，无 LLM 退化为关键词聚类合并成段 |
 | 7 | 高风险敏感画面删除 | **两种互补检测器**：`analyze` 内 `risk_screen`（ASR 关键词 + 可选视觉 LLM，通用高风险界面）；`inspect` 子命令 `screen_inspect`（OCR 文字精准识别**企业微信**，区分企微与畅捷通/好生意等同构 SaaS 左栏）。拿不准一律标「待人工确认」 |
 | 8 | 16:9 横屏封面片头 | 抽软件界面帧 -> 裁黑边 -> 标题居中叠加（5 套预设）-> 转 3s 静态视频拼入片头（同一次编码内 concat） |
+| 9 | 同步到视频号草稿 | `sync` 子命令用 Playwright 驱动本机 Chrome 操作视频号助手网页版，上传成片并点「保存草稿」**不发布**；登录态持久化在独立 profile（首次扫码一次，之后免扫码）；render 后可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 自动触发 |
+
+---
+
+## 视频号草稿同步（打通流程）
+
+```bash
+# 首次（扫码一次，登录态持久化到 ~/.workbuddy/channels_profile）
+python main.py sync "成片.mp4" --title "标题" --headed --workdir <workdir>
+
+# 之后（免扫码）
+python main.py sync "成片.mp4" --title "标题" --workdir <workdir>
+
+# 全自动：render 完成后自动同步到视频号草稿
+AVEditor_SYNC_CHANNEL_ENABLED=true python main.py "视频.mp4" --cover-title "标题"
+```
+
+- **原理**：Playwright `launch_persistent_context`（独立 profile，与真实 Chrome 隔离），无公开 API，走网页操作；
+- **只存草稿不发布**：点击「保存草稿」并验证草稿箱数量 `N>0` 才报成功；
+- **上传耗时**：56MB 视频等封面/描述生成完成约 5-10 分钟（最长 15 分钟）；
+- **常见坑**：headless 模式登录态可能不被服务端认可（用 `--headed` 重扫）；处理未完成就保存会报「草稿箱数为 0」（重跑即可）。
 
 ---
 
@@ -178,4 +199,4 @@ ai_video_auto_editor/
 
 ## 暂不开发
 
-自动配 BGM、自动生成动画、自动发布平台、多账号管理。
+自动配 BGM、自动生成动画、多账号管理、视频号**自动发布**（当前只同步到草稿箱，点「发表」这一步保留人工确认）。

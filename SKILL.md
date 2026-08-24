@@ -190,7 +190,7 @@ AVEditor_USE_LLM=false python main.py "<视频>"
 | `confirm --plan <plan.json> --action delete\|keep [--items 1,2\|--all]` | 人工确认待确认项：将指定项转 `delete_segments`（delete）或从清单移除（keep），写回 plan |
 | `review --plan <plan.json>` | 交互式审核待确认项（终端 TUI），写回 plan.json |
 | `render <input> --plan <plan.json> -o <out>` | 按 plan 渲染成片（只读 plan，不重新分析） |
-| `sync <input> --title "标题" [--desc "描述"] [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。首次需扫码登录（用 `--headed` 弹窗扫码），登录态存 `<workdir>/channels_state.json` 复用；后续免扫码。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
+| `sync <input> --title "标题" [--desc "描述"] [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
 | （无子命令）`<input>` | 全自动：analyze → **inspect（v6 OCR 判定，命中企微自动删）** → render |
 
 > **阶段顺序（硬性，需求#9）**：`analyze → inspect → review → render`。`inspect`（高风险画面两级巡检）是固定步骤，**必须在 `render` 之前完成**；漏跑会导致企业微信/微信/通讯录等隐私界面残留在成片里。全自动模式（无子命令）已内置该顺序；分阶段手动跑时必须自行在 `render` 前执行 `inspect`（其结果是追加写入 `plan.json`，不会覆盖 `analyze` 已产出的 `delete_segments`/`review_items`）。
