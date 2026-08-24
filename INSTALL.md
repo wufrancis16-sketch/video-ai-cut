@@ -117,6 +117,39 @@ python main.py "D:\视频\xxx.mp4"
 - 长视频（数十分钟）也可处理，渲染用 QSV 硬件加速约 10 分钟。
 - 大模型 API（openai 兼容）**可选**：不配 Key 会自动降级为关键词检测，封面标题用首句。
 
+### 安装注意事项（必读）
+
+脚本能自动装依赖，但以下 3 件事**代码无法替你自动完成**：
+
+1. **FFmpeg 是硬依赖**：`install.bat` 会尝试 `winget install --id Gyan.FFmpeg` 自动装；失败时手动下载 https://www.gyan.dev/ffmpeg/builds/（ffmpeg-release-full.7z），解压后把 `bin` 目录加入系统 PATH，重开命令行验证 `ffmpeg -version`。
+2. **首次 ASR 自动下载模型**：第一次剪辑时 faster-whisper 自动下载 `small` 模型（约 460MB），需几分钟；缓存到 `~/.cache/aveditor/models/` 后复用。
+3. **Codex 用户需新开会话**：技能放进 `~/.codex/skills/` 后必须**新开会话**才会识别；WorkBuddy 同理。
+
+其他高频坑：
+
+| 问题 | 解决 |
+|------|------|
+| `pip install` 很慢/超时 | `pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple` |
+| GitHub clone 超时 | 用镜像前缀 `https://ghproxy.com/https://github.com/...` |
+| verify 报「未检测到 ffmpeg」 | 装了但没加 PATH / 旧终端会话 → **重开命令行** |
+| 视频号同步报「未检测到登录态」 | 加 `--headed` 重跑扫码（headless 登录态可能不被服务端认可） |
+| 想换视频号账号 | 删除 `~/.workbuddy/channels_profile/` 后重新 `--headed` 扫码 |
+
+### 时长说明（处理耗时 & 成片压缩）
+
+**处理耗时**（1080P / CPU 推理参考，视机器浮动）：
+
+| 视频时长 | ASR 识别 | 企微 OCR 全片扫描 | 渲染（QSV） | 合计参考 |
+|---------|----------|------------------|------------|---------|
+| 10 分钟 | ~1-2 min | ~5-10 min | ~3-5 min | ~10-15 min |
+| 30 分钟 | ~4-6 min | ~20-30 min | ~7-10 min | ~35-50 min |
+| 60 分钟 | ~8-12 min | ~40-60 min | ~12-20 min | ~60-90 min |
+
+- ASR 约 4-5 倍速；**企微 OCR 全片扫描是最耗时环节**（召回优先，步长 3s 逐帧）；渲染约 2-4 倍速（QSV 硬件）。
+- 有独立显卡（cuda）时 ASR 可快 3-5 倍。
+
+**成片时长**：自动删停顿（>1s 裁短、>3s 删除）、议价、企微界面、腾讯会议开场 → 通常**压缩 30-50%**（实测 32 分钟化工演示 → 17 分钟，压缩 46%）。不想裁停顿：`AVEditor_PAUSE_MODE=off python main.py 视频.mp4`。成片时长在渲染结束行打印（如 `1035.598s`）。
+
 ## 三.5、视频号草稿同步（打通流程）
 
 > 把剪辑好的成片自动上传到**微信视频号草稿箱**（只存草稿，**不发布**）。
