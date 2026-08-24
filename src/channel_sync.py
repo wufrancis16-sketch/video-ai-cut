@@ -191,7 +191,7 @@ def sync_to_channels(video: str, title: str, workdir: str,
                 ctx.close()
                 return False
             # 等上传完成：进度条消失 / "保存草稿" 按钮变可点
-            print("  [视频号] 等待上传完成（最长 300s）…")
+            print("  [视频号] 等待上传+封面+描述生成（最长 900s）…")
             _wait_upload_done(page)
             page.screenshot(path=os.path.join(workdir, "channels_uploaded.png"))
             print("  [视频号] 上传后截图 -> channels_uploaded.png")
@@ -226,15 +226,14 @@ def sync_to_channels(video: str, title: str, workdir: str,
             saved = _save_draft(page)
             if saved:
                 # 等待保存完成（按钮变回"保存草稿"或页面跳转）
-                page.wait_for_timeout(2500)
-                # 验证：跳到草稿箱或提示成功
+                page.wait_for_timeout(3500)
                 cur = page.url
                 print(f"  [视频号] 保存后 URL: {cur}")
-                # 主动检查草稿箱是否多了一条
+                # 主动检查草稿箱是否多了一条（严格数 N>0）
                 if _verify_draft_added(page):
                     print("  [视频号] ✅ 已存入草稿箱（未发布，已验证）")
                 else:
-                    print("  [视频号] ⚠️ 「保存草稿」已点击，但未在草稿箱确认（可能保存中或失败）")
+                    print("  [视频号] ⚠️ 「保存草稿」已点击，但草稿箱数仍为 0（可能保存中/失败）")
             else:
                 print("  [视频号] ⚠️ 未找到「保存草稿」按钮，停留在编辑页", file=sys.stderr)
             page.screenshot(path=os.path.join(workdir, "channels_after_save.png"))
@@ -282,51 +281,66 @@ def _click_publish(page) -> bool:
     return False
 
 
-def _wait_upload_done(page, timeout_s: int = 300) -> None:
-    """轮询直到上传完成。
+def _wait_upload_done(page, timeout_s: int = 900) -> None:
+    """轮询直到视频**真正可保存**。
 
-    视频号助手上传完成后：大拖拽区变成「视频预览缩略图 + 替换/删除」，
-    进度条消失。我们轮询"上传中"文字 + 等待视频预览图。
+    视频号助手上传完成后还要做：封面生成 + 视频描述生成 + 页面初始化，
+    这期间"保存草稿"按钮无效。必须等这些"生成中/初始化中"提示全部消失。
+
+    56MB 视频通常需要 5-10 分钟处理完，所以默认 900s（15 分钟）。
     """
     t0 = time.time()
     last_msg = ""
     while time.time() - t0 < timeout_s:
-        # 1) 仍在上传中？
         try:
-            uploading = page.locator("text=上传中").count()
-            processing = page.locator("text=处理中").count()
-            if uploading + processing > 0 and last_msg != "uploading":
-                last_msg = "uploading"
-                print("    ⏳ 上传中…", flush=True)
-        except Exception: pass
-        # 2) 视频预览缩略图（upload 完成后会出现）
-        try:
-            preview = page.locator(
-                "video, [class*='preview'] video, [class*='video-preview']")
-            if preview.count() > 0:
-                print("  [视频号] ✓ 上传完成（检测到视频预览）")
+            body = page.inner_text("body", timeout=3000)
+        except Exception:
+            page.wait_for_timeout(2500)
+            continue
+        # 检测"处理中"提示
+        pending_kws = ["上传中", "处理中", "生成中", "页面初始化中", "初始化中"]
+        pending = sum(1 for kw in pending_kws if kw in body)
+        if pending > 0 and last_msg != "processing":
+            print(f"    ⏳ 处理中（{pending} 项: {','.join(k for k in pending_kws if k in body)}）",
+                  flush=True)
+            last_msg = "processing"
+        if pending == 0 and last_msg == "processing":
+            # 进入"无处理中"状态，等 2s 确认稳定
+            page.wait_for_timeout(2000)
+            try:
+                body2 = page.inner_text("body", timeout=3000)
+            except Exception:
+                body2 = ""
+            if not any(kw in body2 for kw in pending_kws):
+                print("  [视频号] ✓ 视频可保存（生成全部完成）")
                 return
-        except Exception: pass
         page.wait_for_timeout(2500)
-    print("  [视频号] ⚠️ 上传等待超时，继续尝试填标题", file=sys.stderr)
+    print("  [视频号] ⚠️ 等待超时（视频可能未真正处理完），尝试保存",
+          file=sys.stderr)
 
 
 def _verify_draft_added(page) -> bool:
     """验证草稿是否真的进了草稿箱。
 
-    跳转到 /platform/post/draftListManager，查看列表中是否有
-    含我们标题的条目。
+    跳转到 /platform/post/draftListManager，等列表渲染完毕，
+    数列表行数（tr 元素）；行数 > 0 才算成功。
+
+    注意：视频号「草稿箱」页左侧菜单直接显示「草稿箱 (N)」标题，
+    body 文本里就有这个数字；表格行延迟渲染，要多等。
     """
     try:
         page.goto("https://channels.weixin.qq.com/platform/post/draftListManager",
                   wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(4000)
+        page.wait_for_timeout(6000)
+        # 视频号显示「草稿箱 (N)」在左侧菜单标题里（最可靠信号）
         body = page.inner_text("body", timeout=5000)
-        # 草稿箱空时显示「草稿箱 (0)」
-        if "草稿箱 (0)" in body or "草稿箱（0）" in body:
-            return False
-        # 否则认为有草稿（标题可能不在第一屏但至少不为 0）
-        return True
+        import re
+        m = re.search(r"草稿箱\s*[（(]\s*(\d+)\s*[)）]", body)
+        if m:
+            return int(m.group(1)) > 0
+        # 兜底：数表格行
+        rows = page.locator("table tr")
+        return rows.count() > 1   # >1 排除表头
     except Exception:  # noqa
         return False
 
