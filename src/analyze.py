@@ -639,8 +639,10 @@ def _build_cover_info(segments, plan: EditPlan, llm, cfg,
                 cfg, key, "cover_title",
                 lambda: llm.cover_title(transcript) or "",
                 label="封面标题") or ""
-        # 不提供首句兜底：高质量标题必须由 LLM 生成。未配置 key 或 LLM
-        # 失败时标题留空，并给出明确提示，交由人工在视频号草稿标题处补充。
+        # 说明：封面标题优先级见上方显式 cover_title > 本分支 LLM。经智能体（WorkBuddy/Codex）
+        # 使用时，智能体用自身 LLM 生成标题并通过 --cover-title 注入 cfg.cover_title，不会走到这里。
+        # 本分支是「纯命令行无智能体」的后备：仅当配置了外部 AVEditor_LLM_* 时才调用 LLM；
+        # 否则标题留空并提示，交由人工在视频号草稿标题处补充（坚持高质量，不做首句兜底）。
         if not title and not (llm and llm.available()):
             print("[warn] 未配置 LLM_API_KEY，跳过自动标题生成。"
                   "请在环境变量设置 AVEditor_LLM_API_KEY / AVEditor_LLM_BASE_URL"
