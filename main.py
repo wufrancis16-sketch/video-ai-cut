@@ -168,6 +168,15 @@ def _cmd_render(args):
         print("   请先运行: python main.py analyze <input>", file=sys.stderr)
         sys.exit(1)
     plan = EditPlan.load(plan_path)
+    # 智能体/外部传入的封面标题优先（避免重跑 ASR）：注入 plan.cover 并落盘，
+    # 使 render 烧录封面与后续 sync 视频号都能读到同一标题。
+    if getattr(args, "cover_title", None):
+        plan.cover = dict(plan.cover or {})
+        plan.cover["title"] = args.cover_title
+        try:
+            plan.save(plan_path)
+        except Exception as e:  # noqa
+            print(f"  [warn] 写回 plan.cover.title 失败（仍按本次渲染使用）: {e}")
     video = os.path.abspath(args.input)
     output, _ = _default_outputs(video, args.output)
     render.render(plan, cfg, output, video)
@@ -420,6 +429,9 @@ def main():
         pr2.add_argument("input", help="输入视频路径 (mp4)")
         pr2.add_argument("--plan", default=None, help="plan.json 路径")
         pr2.add_argument("-o", "--output", default=None, help="输出视频路径")
+        pr2.add_argument("--cover-title", default=None,
+                        help="强制指定封面/视频号标题（优先于 plan.json，"
+                             "供智能体调用自身 LLM 生成后注入，避免重跑 ASR）")
         _add_common(pr2)
 
         ps = sub.add_parser("sync", help="把成片上传到视频号草稿箱（不发布）")

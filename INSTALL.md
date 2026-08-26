@@ -25,7 +25,7 @@ git clone --depth 1 https://ghproxy.com/https://github.com/wufrancis16-sketch/vi
 git clone --depth 1 https://github.com/wufrancis16-sketch/video-ai-cut.git ~/.workbuddy/skills/video-ai-cut && cd ~/.workbuddy/skills/video-ai-cut && bash install.sh
 ```
 
-> `install.bat` / `install.sh` 自动完成：① 装到 WorkBuddy 技能目录 ② 装到 Codex 技能目录 ③ `pip install -r requirements.txt` ④ 检测/装 FFmpeg ⑤ **交互配置 LLM（输入 key 自动写入 `.env`，封面标题高质量生成依赖）** ⑥ `verify_skill.py` 自检（9 项全 PASS 即可用）。
+> `install.bat` / `install.sh` 自动完成：① 装到 WorkBuddy 技能目录 ② 装到 Codex 技能目录 ③ `pip install -r requirements.txt` ④ 检测/装 FFmpeg ⑤ **可选：交互配置 LLM（留空跳过；经智能体使用时封面标题由智能体自动生成，无需配置）** ⑥ `verify_skill.py` 自检（9 项全 PASS 即可用）。
 > 前提：装好 Git + Python 3.10+（勾选 Add to PATH）。
 
 **装完怎么用**：
@@ -115,7 +115,7 @@ python main.py "D:\视频\xxx.mp4"
 - 自动删除的片段都会写入 `审核清单.txt` 和 `plan.json`，可人工复核。
 - 企业微信/微信等客户隐私界面会被识别并删除（检测器 v7 精确匹配）。
 - 长视频（数十分钟）也可处理，渲染用 QSV 硬件加速约 10 分钟。
-- 大模型 API（openai 兼容）**建议配置**：不配 Key 时敏感检测降级为关键词，但**封面标题将无法自动生成**（留空），需手动指定或在视频号草稿处补充。安装脚本会在最后一步**交互询问 key 并自动写入技能目录的 `.env`**（默认 DeepSeek，也可填通义/智谱），无需手动配环境变量；若安装时跳过了，随时重跑 `install.bat`/`install.sh` 即可补配（已配置则自动跳过）。
+- **封面标题免外部 Key**：经智能体（WorkBuddy / Codex）使用时，封面标题由**智能体自带的 LLM 自动生成并注入**，同事安装即用，**无需为任何人配置 LLM Key**。纯命令行独立运行 `main.py`（无智能体托管）才需 `AVEditor_LLM_*`（可选，安装脚本最后一步询问，留空跳过）或手动 `--cover-title`；不配则标题留空。详见 `SKILL.md`「执行方式 → 智能体生成封面标题」。
 
 ### 安装注意事项（必读）
 

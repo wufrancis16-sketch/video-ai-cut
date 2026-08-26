@@ -71,8 +71,8 @@ else
   echo "      FFmpeg 已就绪."
 fi
 
-# ---------- 5. 配置 LLM（推荐；不配则封面标题留空，需手动填）----------
-echo "[5/5] 配置 LLM（封面标题高质量生成依赖，可选）..."
+# ---------- 5. 配置 LLM（可选；经智能体使用时无需配置，本步仅供纯命令行运行 main.py）----------
+echo "[5/5] 配置 LLM（可选；经智能体使用时封面标题由智能体自动生成，无需配置；本步仅用于纯命令行运行 main.py）..."
 CONFIGURED=0
 [ -s "$WB_DIR/.env" ] && [ -s "$CODEX_DIR/.env" ] && CONFIGURED=1
 if [ "$CONFIGURED" -eq 1 ]; then
@@ -98,7 +98,7 @@ EOF
     done
     echo "      完成。重启 WorkBuddy/Codex 会话后即可自动生成高质量封面标题。"
   else
-    echo "      跳过 LLM 配置。未配 key 时封面标题会留空（可随时手动配或重跑脚本）。"
+    echo "      跳过 LLM 配置。经智能体使用时封面标题仍由智能体自动生成；仅纯命令行运行 main.py 时才需手动配（可随时重跑脚本）。"
   fi
 fi
 

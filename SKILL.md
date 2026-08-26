@@ -41,7 +41,7 @@ agent_created: true
 
 - 用户提供一段 mp4（销售话术、客户访谈、产品讲解、腾讯会议录制、复盘录像）。
 - 要求：自动加字幕、敏感信息脱敏消音、压缩无效停顿、裁剪会议开场、删除议价内容、删除高风险隐私画面、生成横屏封面。
-- 不强求 LLM：缺失时敏感检测退化为关键词+正则，议价检测退化为关键词聚类，流水线不中断。但封面标题必须由 LLM 生成——未配置 Key 时封面标题留空，需手动指定或在视频号草稿处补充。高风险画面检测在无视觉 LLM 时退化为弱启发式（建议配置多模态模型）。
+- 不强求外部 LLM Key：**封面标题由智能体（WorkBuddy/Codex）自带的 LLM 生成并传给 `render --cover-title`，同事安装即用、零 Key 配置**。敏感检测/议价检测即使无 Key 也退化为关键词+正则/聚类，流水线不中断。纯命令行独立运行 `main.py`（无智能体托管）且未配置 `AVEditor_LLM_*` 时，封面标题留空（需手动指定或安装时配置 Key）。高风险画面检测在无视觉 LLM 时退化为弱启发式（建议配置多模态模型）。
 
 ## 优先级（所有取舍以此为准）
 
@@ -72,7 +72,7 @@ agent_created: true
    3. **无损中间片段**（分窗滤镜图仍超 24000 时）：逐窗渲染为 libx264 `-qp 0` 无损中间片段再 concat，最终仍只有一次有损编码；代价是中间文件占磁盘。
    
    **`-ss` 语义（实测）**：输入定位会把解码后时间戳**重置为 0**。因此每窗解码后必须先 `setpts=PTS+ss/TB` 把时间轴搬回原始位置，再按**原始时间**做 select——否则烧录字幕（ASS 是原始时间轴）会整体偏移 ss 秒。该组合已实测帧级精确。
-10. **LLM 缺失时自动降级**：敏感检测退化为关键词+正则，议价检测退化为关键词聚类。封面标题不在降级范围内——必须由 LLM 生成，未配置 Key 时留空，需在 plan.json 指定或人工补充。不要让缺失的 LLM 阻断整条流水线。
+10. **LLM 缺失时自动降级**：敏感检测退化为关键词+正则，议价检测退化为关键词聚类。封面标题由**智能体**在调用 `render` 前用自身 LLM 生成并通过 `--cover-title` 注入（见「执行方式」），无需外部 Key；纯命令行无智能体且无 `AVEditor_LLM_*` 时标题留空。**不要让缺失的 LLM 阻断整条流水线。**
 11. **所有中间产物放入独立 workdir，最终成片输出到输入文件同级 `edit/` 目录**，不污染原视频。
 12. **所有自动删除/待确认必须留痕**：`plan.json` 含 `delete_segments`/`mute_segments`/`review_items`；`analyze.write_review_report` 写出人类可读的 `审核清单.txt`（序号/时间/类型/原因/操作）。
 
@@ -90,7 +90,7 @@ agent_created: true
    · 敏感数据(sensitive_spans) → mute_segments（精确消音+哔声，画面保留）
    · 长停顿/口头禅 → delete_segments（pause_mode: trim 裁短 / off 不动 / speed 变速）
    · 高风险画面(risk_screen) → delete_segments 或 review_items（边界扩展，不确定则交人工）
-   · 字幕 cue（脱敏文本；**原视频已有字幕则跳过识别与烧录**，见「本机运行环境」第 9 条与 `subtitle_detect.py`）、封面主题（LLM 提炼，无则空）
+   · 字幕 cue（脱敏文本；**原视频已有字幕则跳过识别与烧录**，见「本机运行环境」第 9 条与 `subtitle_detect.py`）、封面主题（由智能体在 render 前用自身 LLM 提炼并注入，analyze 阶段先置空，详见「执行方式」）
    ↓
    plan.json  +  审核清单.txt  +  （缓存的 ASR/议价/风险屏结果）
    ↓
@@ -159,9 +159,41 @@ python main.py render  "<视频>" --plan <workdir>/plan.json -o out.mp4
 # 跳过交互审核（安全默认：所有待确认项一律保留，不自动删除）
 python main.py "<视频>" --skip-review
 
-# 不使用 LLM（仅关键词敏感检测；封面标题需配置 LLM 或手动指定）
+# 不使用 LLM（仅关键词敏感检测；封面标题走智能体生成或手动指定）
 AVEditor_USE_LLM=false python main.py "<视频>"
 ```
+
+### 智能体生成封面标题（零外部 Key · 推荐给同事）
+
+`video-ai-cut` 经由智能体（WorkBuddy / Codex）调用时，**封面标题由智能体自带的 LLM 生成**，无需为同事配置任何外部 LLM Key。流程为「先分析拿字幕 → 智能体出标题 → 注入 render」，避免重跑 ASR：
+
+```bash
+# 1) 分析（无需 Key，敏感/议价走关键词兜底）：产出 plan.json + 审核清单.txt
+python main.py analyze "<用户视频绝对路径>" --workdir <wd>
+
+# 2) 读取 <wd>/plan.json 里 subtitle_cues[*].text 拼接成字幕，用下面 prompt 让智能体生成 1 个标题
+#    （标题同时用作成片封面与视频号草稿标题）
+
+# 3) 渲染并把标题注入 plan.cover（render 与 sync 都读到同一标题）
+python main.py render "<用户视频绝对路径>" --plan <wd>/plan.json --cover-title "<生成的标题>" -o <成片路径>
+
+# 4) 可选：上传视频号草稿（标题沿用，不发布；首次加 --headed 扫码一次）
+python main.py sync "<成片路径>" --title "<生成的标题>"
+```
+
+**智能体生成标题的 prompt（直接照用，保证质量）：**
+
+```
+你是短视频运营。根据下面的视频字幕内容，生成 1 个适合作为封面标题 / 视频号标题的短句（≤20 字）。
+要求：
+① 前 8 字内必须有钩子（痛点 / 疑问 / 数字 / 反差）；
+② 必须包含具体行业或场景词（如 化工批发 / 进销存 / 对账 / Excel / 库存）；
+③ 落到痛点或收益，不要只做平铺概括；
+④ 只返回标题本身，不要引号、不要解释。
+<字幕内容>
+```
+
+> 说明：纯命令行独立运行 `main.py`（无智能体托管）时，标题只能来自 `AVEditor_LLM_*`（可选配置）或手动 `--cover-title`，否则留空。经智能体使用时无需任何配置，开箱即用。
 
 - 默认输出：`<视频所在目录>/edit/final_video.mp4`、`<视频所在目录>/edit/cover.png`；`plan.json` 与 `审核清单.txt` 在 `workdir`（默认 `./_work`，可用 `--workdir` 指定）。
 - 依赖缺失时 `main.py` 会**自动 `pip install`**；ffmpeg 缺失会提示安装方式。
@@ -189,7 +221,7 @@ AVEditor_USE_LLM=false python main.py "<视频>"
 | `inspect <input> --plan <plan.json>` | 高风险画面巡检（**v6：OCR 强词+Windows否决**），对每帧左栏跑 RapidOCR（1280 宽抽帧），命中企微专属词或 ≥2 强词(邮件/文档/日程/会议) 且无 Windows 否决即自动写 `delete_segments`，精准区分企微与畅捷通等同构 SaaS 及 Windows 桌面 |
 | `confirm --plan <plan.json> --action delete\|keep [--items 1,2\|--all]` | 人工确认待确认项：将指定项转 `delete_segments`（delete）或从清单移除（keep），写回 plan |
 | `review --plan <plan.json>` | 交互式审核待确认项（终端 TUI），写回 plan.json |
-| `render <input> --plan <plan.json> -o <out>` | 按 plan 渲染成片（只读 plan，不重新分析） |
+| `render <input> --plan <plan.json> -o <out> [--cover-title "标题"]` | 按 plan 渲染成片（只读 plan，不重新分析）；`--cover-title` 注入智能体生成的标题并写入 plan.cover（render 与 sync 共用） |
 | `sync <input> --title "标题" [--desc "描述"] [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
 | （无子命令）`<input>` | 全自动：analyze → **inspect（v6 OCR 判定，命中企微自动删）** → render |
 

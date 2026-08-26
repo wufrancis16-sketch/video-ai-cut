@@ -114,7 +114,7 @@ git -C ~/.codex/skills/video-ai-cut pull            # Codex
 ## 五、装完后的共同步骤
 
 1. **FFmpeg**（必装）：`install.bat`/`install.sh` 会尝试自动装；失败则手动下载 https://www.gyan.dev/ffmpeg/builds/ → 解压 → `bin` 目录加入 PATH → 重开命令行验证 `ffmpeg -version`
-2. **LLM 配置（推荐）**：安装脚本在最后一步会**交互询问 LLM API Key 并自动写入技能目录的 `.env`**（默认 DeepSeek，也可填通义/智谱），装完即自动生成高质量封面标题，无需手动配环境变量。跳过则封面标题留空，可随时重跑 `install.bat`/`install.sh` 补配。
+2. **LLM 配置（可选，经智能体使用时无需）**：**经 WorkBuddy/Codex 智能体使用时，封面标题由智能体自带 LLM 自动生成并注入，同事安装即用，无需配置任何 Key**（详见 `SKILL.md`「执行方式 → 智能体生成封面标题」）。仅当**纯命令行独立运行 `main.py`** 时才需 `AVEditor_LLM_*`，安装脚本最后一步可交互写入 `.env`（留空跳过）。
 3. **自检**：`python verify_skill.py` → 9 项全 PASS
 4. **首次剪辑**：自动下载 whisper 模型（~460MB），需几分钟
 5. **视频号草稿同步**（可选）：`pip install playwright` + 首次 `--headed` 扫码，详见 `INSTALL.md`「三.5」
