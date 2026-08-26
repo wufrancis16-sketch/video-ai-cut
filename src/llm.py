@@ -108,20 +108,52 @@ class LLM:
             return []
 
     def cover_title(self, transcript: str) -> str:
+        """根据字幕生成短视频风格封面标题（高质量）。
+
+        要求：前 8 字有钩子（痛点/疑问/数字）、含具体行业场景词、落到痛点或收益，
+        而非空泛概括。一次生成 3 个候选并由模型选最稳的 1 个；解析失败时按行兜底。
+        """
         if not self.available() or not transcript.strip():
             return ""
         prompt = (
-            "请根据以下视频字幕内容，生成一个适合短视频封面的大标题（不超过20字），"
-            "要有吸引力、能概括核心痛点或价值。只返回标题文本本身，不要引号或解释。\n\n"
-            + transcript[:2000]
+            "你是一名资深短视频运营，要为一段软件产品演示视频取封面/标题。\n"
+            "视频字幕转写如下：\n"
+            f"{transcript[:2000]}\n\n"
+            "要求：\n"
+            "1. 每个标题不超过 20 字，适合短视频封面与视频号草稿标题；\n"
+            "2. 前 8 字必须有钩子：用痛点、疑问或数字抓人（如'对账总乱？''还靠Excel？'"
+            "'3000种商品怎么管'）；\n"
+            "3. 必须包含具体行业/场景词（如化工批发、进销存、对账、批量导入），不要空泛；\n"
+            "4. 落到痛点或收益，不要只做'是什么'的概括；\n"
+            "5. 避免品牌名与夸张违规词。\n"
+            "请只返回 JSON：{\"titles\":[\"候选1\",\"候选2\",\"候选3\"],\"best\":0}，"
+            "best 为最推荐候选的下标（0/1/2）。不要任何解释文字。"
         )
         try:
             resp = self.client.chat.completions.create(
                 model=self.cfg.llm_model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
+                temperature=0.8,
             )
-            return resp.choices[0].message.content.strip().strip('"').strip()
+            content = resp.choices[0].message.content.strip()
+            data = _extract_json(content)
+            if isinstance(data, dict) and data.get("titles"):
+                titles = [str(t).strip().strip('"').strip()
+                          for t in data["titles"] if str(t).strip()]
+                if titles:
+                    try:
+                        best = int(data.get("best", 0))
+                    except Exception:
+                        best = 0
+                    if 0 <= best < len(titles):
+                        return titles[best]
+                    return titles[0]
+            # 兜底：按非空行解析（模型偶尔直接吐标题/多行）
+            lines = [l.strip().strip('"').strip()
+                     for l in content.splitlines() if l.strip()]
+            if lines:
+                return lines[0]
+            return ""
         except Exception as e:  # noqa
             print(f"[warn] LLM 封面标题生成失败: {e}")
             return ""

@@ -607,6 +607,38 @@ def _build_cues(segments: List[Dict[str, Any]],
     return cues
 
 
+def _first_sentence_title(segments) -> str:
+    """无 LLM 时的兜底封面标题：取 ASR 第一句有信息量的话。
+
+    跳过寒暄/口头禅（你好、稍等、不好意思…），优先取长度≥6 且非纯寒暄的
+    首段；若全是寒暄则退回第一段。截断到 20 字。
+    """
+    if not segments:
+        return ""
+    greet_exact = {"对", "对对", "明白", "嗯", "啊", "好", "好的", "诶",
+                   "再见", "再见的", "那", "咱们", "这个", "那个"}
+    # 以这些词开头的句子基本是寒暄/应答，跳过
+    greet_prefix = ("你好", "那你好", "您好", "稍等", "不好意思", "对",
+                    "明白", "嗯", "啊", "好", "诶", "再见", "咱们是",
+                    "我跟您", "这边给", "但是没有", "对对")
+    for s in segments[:40]:
+        t = (s.get("text", "") or "").strip() if isinstance(s, dict) else str(s).strip()
+        if not t:
+            continue
+        core = t.strip("，。！？、；：,!?.;: ")
+        if not core or core in greet_exact or len(core) < 6:
+            continue
+        if any(core.startswith(p) for p in greet_prefix):
+            continue
+        return t[:20]
+    # 全为寒暄/极短：退回第一段非空文本
+    for s in segments[:10]:
+        t = (s.get("text", "") or "").strip() if isinstance(s, dict) else str(s).strip()
+        if t:
+            return t[:20]
+    return ""
+
+
 def _build_cover_info(segments, plan: EditPlan, llm, cfg,
                       video: str) -> Dict[str, Any]:
     """封面：从正片挑选「产品页面」帧为底，AI 从全文提炼短主题。
@@ -629,15 +661,19 @@ def _build_cover_info(segments, plan: EditPlan, llm, cfg,
     # 用户显式指定封面标题时优先使用（覆盖 LLM 提炼）
     if getattr(cfg, "cover_title", ""):
         title = cfg.cover_title
-    elif llm and llm.available() and segments:
-        transcript = " ".join(s.get("text", "") for s in segments[:200])
-        key = cache.signature(video, {"kind": "cover_title",
-                                      "model": cfg.llm_model,
-                                      "asr": cfg.asr_model})
-        title = cache.get_or_create(
-            cfg, key, "cover_title",
-            lambda: llm.cover_title(transcript) or "",
-            label="封面标题") or ""
+    else:
+        if llm and llm.available() and segments:
+            transcript = " ".join(s.get("text", "") for s in segments[:200])
+            key = cache.signature(video, {"kind": "cover_title",
+                                          "model": cfg.llm_model,
+                                          "asr": cfg.asr_model})
+            title = cache.get_or_create(
+                cfg, key, "cover_title",
+                lambda: llm.cover_title(transcript) or "",
+                label="封面标题") or ""
+        # 无 LLM key 或 LLM 生成失败：用 ASR 首句兜底，保证标题不空
+        if not title:
+            title = _first_sentence_title(segments)
     return {"title": title, "frame_ts": float(frame_ts),
             "duration": float(cfg.cover_duration)}
 
