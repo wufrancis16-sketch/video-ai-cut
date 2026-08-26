@@ -156,7 +156,7 @@ skill 根目录的 `src/` 为 Python 包 `src`（命名空间包，无需 `__ini
 - `chat_json(prompt, temperature=0) -> Any`：通用 JSON 抽取；失败返回 None（调用方回退）。议价检测用它。
 - `classify_image(prompt, image_path) -> dict|None`：视觉分类，单帧图 base64 发给多模态模型，返回 `{risk, confidence, reason}`；失败返回 None（回退启发式）。高风险画面检测用它。
 - `detect_sensitive(segments) -> hits`：仅喂字幕文本做语义敏感判断。
-- `cover_title(transcript) -> str|None`：由字幕文本生成封面标题；None 时退化为首句字幕。
+- `cover_title(transcript) -> str`：由字幕文本生成封面标题（短视频风格，3 候选选优）；未配置 LLM 时返回空字符串，调用方不再以首句兜底，需显式指定或人工补充。
 
 ## main.py（入口，位于 skill 根目录）
 子命令：

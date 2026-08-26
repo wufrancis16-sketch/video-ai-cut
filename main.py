@@ -20,7 +20,7 @@
   # 跳过交互审核（安全默认：所有待确认项一律保留，不自动删除）
   python main.py input.mp4 --skip-review
 
-  # 不使用 LLM（仅关键词敏感检测 + 首句作封面标题）
+  # 不使用 LLM（仅关键词敏感检测；封面标题需配置 LLM 或手动指定）
   AVEditor_USE_LLM=false python main.py input.mp4
 
   # 配置 LLM (OpenAI 兼容，例如 DeepSeek / 通义 / 智谱)

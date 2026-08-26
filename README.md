@@ -38,7 +38,7 @@
 - **视频处理**：FFmpeg（帧级精确 `select` 删除 + 字幕烧录 + 封面拼接；多切点走「单 select 内联 -> 分窗单命令 -> 无损中间片段」三级路径规避 OOM）
 - **音频处理**：Python `wave`+采样级精确剪辑（消音->哔声->按保留区间拼接->片头静音）
 - **语音识别**：faster-whisper（本地开源 ASR，结果按文件指纹缓存）
-- **AI 分析**：OpenAI 兼容大模型 API（敏感语义 / 议价分析 / 封面标题 / 视觉分类）；缺失自动降级为关键词/启发式，流水线不中断
+- **AI 分析**：OpenAI 兼容大模型 API（敏感语义 / 议价分析 / 封面标题 / 视觉分类）；缺失自动降级为关键词/启发式，流水线不中断。**封面标题必须由 LLM 生成**，未配置 Key 时留空（可在 plan.json 显式指定 `cover_title` 或视频号草稿手动补）
 - **图像处理**：Pillow（封面绘制）；RapidOCR（企业微信左栏中文识别，纯 pip 无需外部 tesseract）
 
 ---
@@ -90,7 +90,7 @@ python main.py render  input.mp4 --plan <workdir>/plan.json -o out.mp4
 python main.py input.mp4 --skip-review
 ```
 
-### 不使用 LLM（仅关键词敏感检测 + 首句作封面标题）
+### 不使用 LLM（仅关键词敏感检测；封面标题需配置 LLM 或手动指定）
 
 ```bash
 AVEditor_USE_LLM=false python main.py input.mp4
@@ -114,7 +114,7 @@ python main.py input.mp4
 | `AVEditor_DEVICE` | `cpu` / `cuda` | `cpu` |
 | `AVEditor_USE_LLM` | 是否启用 LLM | `true` |
 | `AVEditor_WORKDIR` | 中间文件目录 | `./_work` |
-| `AVEditor_LLM_API_KEY` / `BASE_URL` / `MODEL` | LLM 连接 | 空（关闭则降级）|
+| `AVEditor_LLM_API_KEY` / `BASE_URL` / `MODEL` | LLM 连接（封面标题依赖） | 空（关闭则封面标题留空）|
 
 ---
 
