@@ -182,8 +182,34 @@ class Config:
 
     @classmethod
     def load(cls, **overrides) -> "Config":
+        def _load_dotenv() -> dict:
+            """读取技能根目录下的 .env，作为持久化本地配置（不进 git）。
+
+            优先级：显式 overrides > 环境变量 > .env 文件 > 默认值。
+            """
+            data: dict = {}
+            try:
+                root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                env_path = os.path.join(root, ".env")
+                if os.path.isfile(env_path):
+                    with open(env_path, encoding="utf-8") as fh:
+                        for line in fh:
+                            line = line.strip()
+                            if not line or line.startswith("#") or "=" not in line:
+                                continue
+                            k, v = line.split("=", 1)
+                            data[k.strip()] = v.strip().strip('"').strip("'")
+            except Exception:
+                pass
+            return data
+
+        dotenv = _load_dotenv()
+
         def env(name, default):
             v = os.environ.get(f"AVEditor_{name}")
+            if v is not None:
+                return v
+            v = dotenv.get(f"AVEditor_{name}")
             return v if v is not None else default
 
         cfg = cls(

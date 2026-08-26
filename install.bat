@@ -97,6 +97,35 @@ if errorlevel 1 (
     )
 )
 
+REM ---------- 5. 配置 LLM（推荐；不配则封面标题留空，需手动填）----------
+echo [5/5] 配置 LLM（封面标题高质量生成依赖，可选）...
+set "LLM_CFGD="
+if exist "%WB_DIR%\.env" if exist "%CODEX_DIR%\.env" set "LLM_CFGD=1"
+if defined LLM_CFGD (
+    echo      已检测到 .env 配置，跳过（如需重配可删除对应 .env 后重跑脚本）。
+) else (
+    set /p LLMKEY=请输入 LLM API Key（DeepSeek/通义/智谱，留空跳过）:
+    if defined LLMKEY (
+        set "LLMURL=https://api.deepseek.com/v1"
+        set "LLMMODEL=deepseek-chat"
+        set /p LLMURL=Base URL（默认 https://api.deepseek.com/v1，回车用默认）:
+        set /p LLMMODEL=模型名（默认 deepseek-chat，回车用默认）:
+        for %%D in ("%WB_DIR%" "%CODEX_DIR%") do (
+            if exist "%%~D\.git" (
+                (
+                    echo AVEditor_LLM_API_KEY=%LLMKEY%
+                    echo AVEditor_LLM_BASE_URL=%LLMURL%
+                    echo AVEditor_LLM_MODEL=%LLMMODEL%
+                ) > "%%~D\.env"
+                echo      已写入 %%~D\.env
+            )
+        )
+        echo      完成。重启 WorkBuddy/Codex 会话后即可自动生成高质量封面标题。
+    ) else (
+        echo      跳过 LLM 配置。未配 key 时封面标题会留空（可随时手动配或重跑脚本）。
+    )
+)
+
 echo.
 echo ============================================================
 echo   安装完成! 运行自检确认环境...

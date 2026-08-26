@@ -71,6 +71,37 @@ else
   echo "      FFmpeg 已就绪."
 fi
 
+# ---------- 5. 配置 LLM（推荐；不配则封面标题留空，需手动填）----------
+echo "[5/5] 配置 LLM（封面标题高质量生成依赖，可选）..."
+CONFIGURED=0
+[ -s "$WB_DIR/.env" ] && [ -s "$CODEX_DIR/.env" ] && CONFIGURED=1
+if [ "$CONFIGURED" -eq 1 ]; then
+  echo "      已检测到 .env 配置，跳过（如需重配可删除对应 .env 后重跑脚本）。"
+else
+  read -r -p "请输入 LLM API Key（DeepSeek/通义/智谱，留空跳过）: " LLMKEY || true
+  if [ -n "$LLMKEY" ]; then
+    LLMURL="https://api.deepseek.com/v1"
+    LLMMODEL="deepseek-chat"
+    read -r -p "Base URL（默认 https://api.deepseek.com/v1，回车用默认）: " LLMURL_IN || true
+    [ -n "$LLMURL_IN" ] && LLMURL="$LLMURL_IN"
+    read -r -p "模型名（默认 deepseek-chat，回车用默认）: " LLMMODEL_IN || true
+    [ -n "$LLMMODEL_IN" ] && LLMMODEL="$LLMMODEL_IN"
+    for D in "$WB_DIR" "$CODEX_DIR"; do
+      if [ -d "$D/.git" ]; then
+        cat > "$D/.env" <<EOF
+AVEditor_LLM_API_KEY=$LLMKEY
+AVEditor_LLM_BASE_URL=$LLMURL
+AVEditor_LLM_MODEL=$LLMMODEL
+EOF
+        echo "      已写入 $D/.env"
+      fi
+    done
+    echo "      完成。重启 WorkBuddy/Codex 会话后即可自动生成高质量封面标题。"
+  else
+    echo "      跳过 LLM 配置。未配 key 时封面标题会留空（可随时手动配或重跑脚本）。"
+  fi
+fi
+
 echo
 echo "============================================================"
 echo "  安装完成! 运行自检..."

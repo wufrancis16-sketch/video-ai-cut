@@ -12,3 +12,5 @@ debug_ocr.py
 _probe_*.py
 # 大文件（字体走系统路径）
 msyh.ttc
+# 本地配置（含 LLM Key 等敏感凭据，绝不提交；由安装脚本写入）
+.env
