@@ -172,7 +172,7 @@ AVEditor_USE_LLM=false python main.py "<视频>"
 python main.py analyze "<用户视频绝对路径>" --workdir <wd>
 
 # 2) 读取 <wd>/plan.json 里 subtitle_cues[*].text 拼接成字幕，用下面 prompt 让智能体一次性生成：
-#    - 封面标题 TITLE（≤20 字，成片封面用，可稍长更吸引人）
+#    - 封面标题 TITLE（≤30 字，成片封面用，概括更全；超 3 行自动缩小字号）
 #    - 视频号短标题 SHORT_TITLE（≤16 字符！视频号后台硬限制，超出无法保存草稿）
 #    - 描述（50~150 字，视频内容摘要，末尾带 #话题标签）
 #    - 3 个话题标签（如 #进销存 #财务软件 #商贸管理）
@@ -190,11 +190,12 @@ python main.py sync "<成片路径>" --title "<SHORT_TITLE>" \
 ```
 你是短视频运营。根据下面的视频字幕内容，生成以下四项内容：
 
-【1】封面标题 TITLE（≤20 字，印在成片封面上，可稍长更吸睛）
+【1】封面标题 TITLE（≤30 字，印在成片封面上，能概括视频核心内容；超 3 行会自动缩小字号）
 要求：
 ① 前 8 字内必须有钩子（痛点 / 疑问 / 数字 / 反差）；
 ② 必须包含具体行业或场景词（如 化工批发 / 进销存 / 对账 / Excel / 库存）；
-③ 落到痛点或收益，不要只做平铺概括。
+③ 落到痛点或收益，不要只做平铺概括；
+④ 可适当展开（≤30 字），把视频解决的问题和方案讲得更完整。
 
 【2】视频号短标题 SHORT_TITLE（≤16 字符，⚠️ 视频号后台硬限制，超出无法保存草稿！）
 要求：
@@ -216,7 +217,7 @@ python main.py sync "<成片路径>" --title "<SHORT_TITLE>" \
 示例：#进销存 #商贸管理 #库存盘点
 
 输出格式（严格按此格式，方便程序解析）：
-TITLE: <封面标题(≤20字)>
+TITLE: <封面标题(≤30字)>
 SHORT_TITLE: <视频号短标题(≤16字符)>
 DESC: <描述>
 TOPICS: #话题1 #话题2 #话题3
@@ -252,7 +253,7 @@ TOPICS: #话题1 #话题2 #话题3
 | `inspect <input> --plan <plan.json>` | 高风险画面巡检（**v6：OCR 强词+Windows否决**），对每帧左栏跑 RapidOCR（1280 宽抽帧），命中企微专属词或 ≥2 强词(邮件/文档/日程/会议) 且无 Windows 否决即自动写 `delete_segments`，精准区分企微与畅捷通等同构 SaaS 及 Windows 桌面 |
 | `confirm --plan <plan.json> --action delete\|keep [--items 1,2\|--all]` | 人工确认待确认项：将指定项转 `delete_segments`（delete）或从清单移除（keep），写回 plan |
 | `review --plan <plan.json>` | 交互式审核待确认项（终端 TUI），写回 plan.json |
-| `render <input> --plan <plan.json> -o <out> [--cover-title "标题"]` | 按 plan 渲染成片（只读 plan，不重新分析）；`--cover-title` 注入智能体生成的标题并写入 plan.cover（**封面标题不受 16 字符限制**，可 ≤20 字） |
+| `render <input> --plan <plan.json> -o <out> [--cover-title "标题"]` | 按 plan 渲染成片（只读 plan，不重新分析）；`--cover-title` 注入智能体生成的标题并写入 plan.cover（**封面标题不受 16 字符限制**，可 ≤30 字，超 3 行自动缩小字号） |
 | `sync <input> --title "标题" --desc "描述" --topics #话题1 #话题2 [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。自动填好**短标题 + 视频描述 + 3 个话题标签**，保存后可直接点「发表」。**⚠️ 短标题硬限制 16 字符，超出无法保存草稿——代码会强制截断到 16 字符并打印提示**（封面标题走另一条路径不受此限）。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
 | （无子命令）`<input>` | 全自动：analyze → **inspect（v6 OCR 判定，命中企微自动删）** → render |
 
@@ -300,7 +301,7 @@ TOPICS: #话题1 #话题2 #话题3
 **高风险画面巡检（inspect 子命令，src/screen_inspect.py，v6 OCR 方案，手动备用路径）**：全片 `inspect_low_freq_step=2.0s` 抽帧（1280 宽）→ 左栏裁剪放大跑 RapidOCR → 判定规则：命中「企业微信」专属词或 ≥2 强词（邮件/文档/日程/会议）判企微删除；命中 Windows 桌面词（此电脑/回收站/控制面板/网络/快速访问）否决不删；单强词+左栏结构标待确认（OCR 文字模糊匹配 edit distance≤1）。相邻帧 `seg_gap_sec=2.5s` 合并 → 边界精修 `seg_refine_max=3.0s` + 过渡容忍 `seg_click_buffer=1.2s` → 末段 `seg_pad_sec=0.3s` 安全外扩；`conf_delete=0.70` 直接写 `delete_segments`（不需人工）。阈值集中在 `src/screen_inspect.py` 的 `DEFAULTS`。⚠ **默认流水线的企业微信检测在 analyze→`risk_screen.detect`（v7，精确匹配），inspect 子命令是手动备用路径**（保留 v6 模糊匹配仅用于此手动巡检）。
 **停顿处理**：`pause_mode`(trim 裁短 / speed 变速 / off 不处理，默认 trim)、`pause_keep_threshold=1.0`(≤保持)、`pause_speed_threshold=3.0`(>删除)、`pause_trim_to=0.8`(1~3s 停顿保留秒)、`pause_delete_keep=0.25`(>3s 停顿保留过渡秒)、`protect_customer_qa`(默认开，客户问答停顿更宽松)。
 **局部消音**：`beep_freq=1000.0`(哔声频率 Hz)、`beep_duration=30.0`(单段最长)。
-**封面样式**：`cover_style`(purple/red/green/dark/gold)、`cover_font_size=110`、`cover_title_position=0.5`(正中)、`cover_bg_darken=0.20`、`cover_width=1920`、`cover_height=1080`、`cover_duration=3.0`。
+**封面样式**：`cover_style`(purple/red/green/dark/gold)、`cover_font_size=110`、`cover_title_position=0.5`(正中)、`cover_bg_darken=0.20`、`cover_width=1920`、`cover_height=1080`、`cover_duration=3.0`。**封面标题支持 ≤30 字**：自动换行 + 自适应字号（超过 3 行按 0.88 比例缩小字号重排，下限 64px），长标题不溢出、不挤。
 **字幕样式**：`subtitle_font`(Microsoft YaHei)、`subtitle_fontsize=48`、白字黑描边。**字幕强制单行（2026-08-21）**：analyze `_build_cues` 按单行容量拆分长句（`_split_cue`，每行 ≤ 可用宽度/字号 ≈ 34 字 @1080p），长 ASR 段拆成多条 cue 并**用词级时间戳精确分配时间**（无词时间戳则按字数比例均分）——彻底消除 libass 自动折行导致的两行字幕；外挂 SRT 同步受益。
 **已有字幕跳过（subtitle_detect.py）**：`skip_subtitle_if_exists`(默认开，总开关)、`detect_burned_subtitle`(默认开)、`burned_subtitle_samples=6`(硬字幕采样帧数)、`burned_subtitle_min_hits=3`(至少命中几帧判硬字幕)。先 ffprobe 查内嵌字幕流（零成本），没有再 OCR 底部 22% 字幕带（水平居中，≥3 帧命中 + 跨帧文字变化，排除静止 UI 底栏）判硬字幕；命中则 analyze 不生成 `subtitle_cues`、render 不烧录也不出外挂 SRT，ASR 仍照常跑（敏感/议价/停顿/风险依赖它）。
 **最终编码**：`final_crf=19`(ERP 文字清晰)、`final_preset=medium`、`final_audio_bitrate=192k`、`final_audio_sr=48000`、`force_cfr=true`(统一恒定帧率保证切点帧级精确)、`burn_subtitle=true`、`keep_external_subtitle=true`。

@@ -263,9 +263,17 @@ def generate_cover(frame_path: str, title: str, out_path: str,
 
     font = _load_font(font_size, bold=True)
 
-    # 自动换行
-    max_chars = max(6, int(width // (font_size * 1.8)))
-    lines = textwrap.wrap(title, width=max_chars) or [title]
+    # 自动换行 + 自适应字号：标题最多 3 行（30 字以内都能放下且不挤），
+    # 行数超限时按 0.88 比例缩小字号重排，直到 ≤3 行或字号到下限。
+    MAX_LINES = 3
+    MIN_FONT = 64
+    while True:
+        max_chars = max(6, int(width // (font_size * 1.8)))
+        lines = textwrap.wrap(title, width=max_chars) or [title]
+        if len(lines) <= MAX_LINES or font_size <= MIN_FONT:
+            break
+        font_size = int(font_size * 0.88)
+        font = _load_font(font_size, bold=True)
 
     # 测量每行尺寸
     draw_tmp = ImageDraw.Draw(Image.new("RGB", (1, 1)))
