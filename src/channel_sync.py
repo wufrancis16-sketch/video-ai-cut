@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -91,6 +92,7 @@ def _import_playwright():
 
 
 def _chrome_path() -> str:
+    # Windows：Chrome / Edge 常见安装路径
     for p in (
         r"C:/Program Files/Google/Chrome/Application/chrome.exe",
         r"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
@@ -98,6 +100,19 @@ def _chrome_path() -> str:
         r"C:/Program Files/Microsoft/Edge/Application/msedge.exe",
     ):
         if os.path.exists(p):
+            return p
+    # macOS：/Applications 与用户目录 ~/Applications
+    if sys.platform == "darwin":
+        for base in ("/Applications", os.path.expanduser("~/Applications")):
+            for name in ("Google Chrome", "Microsoft Edge", "Chromium"):
+                cand = os.path.join(base, f"{name}.app/Contents/MacOS/{name}")
+                if os.path.exists(cand):
+                    return cand
+    # PATH 兜底（Linux / 自定义安装）
+    for name in ("google-chrome", "chromium", "chromium-browser",
+                 "microsoft-edge", "google-chrome-stable"):
+        p = shutil.which(name)
+        if p:
             return p
     return None
 

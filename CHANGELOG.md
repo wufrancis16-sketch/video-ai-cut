@@ -35,6 +35,7 @@
 - SKILL.md sync 子命令文档更新，示例命令包含 `--desc` 和 `--topics`。
 - **智能体生成标题改为「封面标题 + 视频号短标题」分开**：封面标题 `TITLE`（≤30 字，成片封面用，不受 16 字符限制，概括更全）；视频号短标题 `SHORT_TITLE`（**≤16 字符，视频号后台硬限制，超出无法保存草稿**）。prompt 输出格式新增 `SHORT_TITLE:` 行，sync 命令改用 `--title "<SHORT_TITLE>"`。
 - **封面标题上限放宽到 ≤30 字 + 自适应字号**：`cover.py` 标题自动换行，超过 3 行按 0.88 比例缩小字号重排（下限 64px）——30 字标题也能 3 行放下、不溢出不挤（实测 30 字 → 96px / 3 行）。
+- **macOS 适配（同事用 Mac 可全功能使用）**：① `channel_sync._chrome_path()` 新增 macOS 分支（`/Applications/Google Chrome.app`、Edge、Chromium、`~/Applications`、PATH 兜底）——视频号上传在 Mac 上不再报"找不到 Chrome"；② 编码器探测新增 **`h264_videotoolbox`**（Apple Silicon 硬件编码，auto 模式自动探测，长视频提速；失败回退 libx264）；③ SKILL.md 已知限制补充 macOS 使用说明。
 
 ### Fixed
 - **修复视频号草稿页标题和描述为空的问题**：之前版本选择器可能未匹配到元素，或智能体调用时未传 description 参数导致跳过。现在加固选择器 + JS 兜底 + 智能体必传描述和话题。

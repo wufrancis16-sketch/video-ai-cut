@@ -125,10 +125,11 @@ class Config:
     # ---- 最终编码（唯一一次完整重编码）----
     final_crf: int = 19                   # 18~20：ERP 界面文字清晰
     final_preset: str = "fast"                # 长视频加速（原 medium）
-    # 视频编码器：auto / libx264 / h264_qsv / h264_nvenc / h264_d3d12va
-    #   auto  → 运行时探测，优先 NVENC，其次 QSV（Intel 核显），再回退软件 libx264
+    # 视频编码器：auto / libx264 / h264_qsv / h264_nvenc / h264_d3d12va / h264_videotoolbox
+    #   auto  → 运行时探测：优先 NVENC(NVIDIA) → QSV(Intel 核显) → d3d12va(Windows)
+    #           → videotoolbox(macOS/Apple Silicon 硬件编码) → 回退软件 libx264
     #   libx264 → 始终 CPU 软编（最稳，但长视频极慢，易超时/OOM）
-    #   h264_qsv / h264_nvenc → 硬件编码，长视频提速 5~30 倍，彻底规避超时
+    #   h264_qsv / h264_nvenc / h264_videotoolbox → 硬件编码，长视频提速 5~30 倍
     final_encoder: str = "auto"
     # 硬件编码质量（global_quality / cq），留空则复用 final_crf
     final_hw_quality: Optional[int] = None

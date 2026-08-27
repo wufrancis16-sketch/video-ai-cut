@@ -98,15 +98,16 @@ def _probe_hw_encoder(enc: str) -> bool:
 
 def _resolve_encoder(cfg: "Config") -> str:
     enc = (getattr(cfg, "final_encoder", "auto") or "auto").strip().lower()
-    if enc in ("h264_qsv", "h264_nvenc", "h264_d3d12va"):
+    if enc in ("h264_qsv", "h264_nvenc", "h264_d3d12va", "h264_videotoolbox"):
         if not _probe_hw_encoder(enc):
             print(f"  [编码] 指定硬件编码器 {enc} 探测不可用，回退 libx264")
             return "libx264"
         return enc
     if enc == "libx264":
         return "libx264"
-    # auto：优先 NVENC，其次 QSV，再 d3d12va，最后回退软编
-    for cand in ("h264_nvenc", "h264_qsv", "h264_d3d12va"):
+    # auto：优先 NVENC，其次 QSV（Intel），再 d3d12va（Windows），
+    # 再 videotoolbox（macOS/Apple Silicon 硬件编码），最后回退软编 libx264
+    for cand in ("h264_nvenc", "h264_qsv", "h264_d3d12va", "h264_videotoolbox"):
         if _probe_hw_encoder(cand):
             return cand
     return "libx264"
@@ -126,6 +127,11 @@ def _video_encode_args(cfg: "Config", fps: float) -> List[str]:
     if enc == "h264_nvenc":
         return ["-c:v", "h264_nvenc", "-cq", str(q), "-preset", "p4",
                 "-pix_fmt", "yuv420p", "-r", f"{fps:.6f}"]
+    if enc == "h264_videotoolbox":
+        # macOS/Apple Silicon 硬件编码：-q:v 1~100（越小质量越高，方向同 crf）；
+        # -allow_sw 1 允许参数不支持时软件回退，避免硬编失败中断
+        return ["-c:v", "h264_videotoolbox", "-q:v", str(q),
+                "-allow_sw", "1", "-pix_fmt", "yuv420p", "-r", f"{fps:.6f}"]
     # h264_qsv / h264_d3d12va 等硬件编码器：global_quality 近似 crf
     return ["-c:v", enc, "-global_quality", str(q),
             "-pix_fmt", "yuv420p", "-r", f"{fps:.6f}"]

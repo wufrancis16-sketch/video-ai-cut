@@ -329,6 +329,7 @@ TOPICS: #话题1 #话题2 #话题3
 - 敏感消音精确到段（有词级时间戳则按词），非逐字。
 - 停顿检测基于 ASR 间隔；极端重叠语音可能误判。
 - 封面标题风格可选 5 套（`cover_style`）；如需新增风格在 `cover.STYLE_PRESETS` 扩展。
+- **macOS 支持（2026-08-27 已适配）**：安装用 `install.sh`（要求 `python3` ≥3.10，建议 `brew install python@3.13` + `brew install ffmpeg`）。渲染编码 `final_encoder=auto` 会自动探测 Apple 的 **`h264_videotoolbox`** 硬件编码（Mac 长视频可提速 5~30 倍，探测不到则回退 libx264）；视频号上传自动查找 **`/Applications/Google Chrome.app`**（或 Edge/Chromium、`~/Applications`、PATH）等 Mac 路径。⚠️ 上文「本机运行环境」章节是 **Windows 实测铁律**，macOS 用户仅需注意：①用 `python3` 而非 Windows managed 路径；②Whisper 模型缓存自动落在 `~/.cache/aveditor/models`（无需手动改）；③ffmpeg 需在 PATH（brew 安装默认满足）。
 - 议价检测依赖 ASR 文本质量，tiny 模型误识率较高，建议 small/medium；无法 100% 覆盖口语化议价，建议结合 审核清单 人工复核。
 - 高风险画面检测第一版仅「整段删除 / 交人工确认」不打码；启发式（`heuristic` 模式）较弱，建议配置视觉 LLM（`sensitive_screen_mode=vision/auto` + 多模态模型）。置信度不足者已标记「待人工确认」。
 - **视频号上传的账号权限硬障碍（非代码问题）**：`sync` 上传前会自动检测两类阻断弹窗并**立即失败、给出明确处理办法**，不再假报"已点击/可能保存失败"：① `no_permission` —— 编辑页显示「你还不能发表视频 当前登录账号不是视频号…的管理员或运营者」，`保存草稿`按钮处于 `weui-desktop-btn_disabled`；② `admin_verify` —— 出现「管理员本人验证 需管理员扫码验证」弹窗。两者都需人工处理：用**视频号管理员/运营者**账号重新登录（删 `~/.workbuddy/channels_profile` 让其重新扫码），或让管理员把当前账号加为运营者，或完成管理员扫码验证后重跑。草稿箱数量读取依赖左侧「草稿箱(N)」文本，无权限账号会被重定向首页读到 `-1`，此时以"点击成功即可能已存"提示用户去视频号后台人工确认。
