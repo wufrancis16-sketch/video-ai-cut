@@ -5,17 +5,17 @@
 
 设计原则：
 - 完全独立：本模块不 import 剪辑链路的任何内部状态，只接收
-  video 路径 + 标题 +（可选）描述 + 封面图；
+  video 路径 + 标题 + 描述 + 话题标签 +（可选）封面图；
 - 登录态复用（方案 B）：用 `launch_persistent_context` 打开**独立全局
   profile 目录**（默认 ~/.workbuddy/channels_profile），cookies 与真实
   Chrome 隔离但会**永久持久化**——首次扫码一次，之后免扫码自动上传；
   登录过期会自动弹二维码重新扫码；
 - 安全失败：任何一步失败只 warn 并返回 False，绝不影响成片本身；
-- 草稿不发布：上传 + 填标题后**停在草稿箱**，不点「发表」。
+- 草稿不发布：上传 + 填标题/描述/话题后**停在草稿箱**，不点「发表」。
 
 用法：
     from .channel_sync import sync_to_channels
-    ok = sync_to_channels(video, title, workdir, headless=True, description="")
+    ok = sync_to_channels(video, title, workdir, description="...", topics=["#进销存", "#财务软件"], headless=True)
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ import os
 import sys
 import time
 import traceback
-from typing import Optional
+from typing import List, Optional
 
 # ---- 常量 -----------------------------------------------------------------
 CHANNELS_HOME = "https://channels.weixin.qq.com"
@@ -40,8 +40,33 @@ SEL_MENU_CONTENT = "text=内容管理"        # 左侧折叠主菜单
 SEL_MENU_PUBLISH = "text=发表视频"        # 内容管理下的子菜单
 UPLOAD_PAGE_URL = "https://channels.weixin.qq.com/platform/post/create"
 SEL_FILE_INPUT = 'input[type="file"]'     # 全页面唯一的视频/图片上传
-SEL_TITLE_INPUT = 'input[placeholder*="短标题"]'   # 短标题输入框
-SEL_DESC_INPUT = 'textarea[placeholder*="添加描述"]'  # 视频描述 textarea
+
+# 短标题输入框（多候选：placeholder 可能变化）
+SEL_TITLE_INPUTS = [
+    'input[placeholder*="短标题"]',
+    'input[placeholder*="标题"]',
+    '[class*="title"] input',
+    'input[name*="title"]',
+]
+
+# 视频描述 textarea（多候选）
+SEL_DESC_INPUTS = [
+    'textarea[placeholder*="添加描述"]',
+    'textarea[placeholder*="描述"]',
+    '[class*="desc"] textarea',
+    'textarea[name*="desc"]',
+    'textarea[class*="desc"]',
+]
+
+# 话题按钮（#话题）
+SEL_TOPIC_BTN = [
+    'text=#话题',
+    'button:has-text("话题")',
+    'span:has-text("话题")',
+    'div:has-text("#话题")',
+    '[class*="topic"]:has-text("话题")',
+]
+
 SEL_SAVE_DRAFT = 'text=保存草稿'           # 草稿按钮（先点这个，不点"发表"）
 
 
@@ -105,16 +130,20 @@ def _wait_scan_qr(page, workdir: str, timeout_s: int = 180) -> bool:
 
 
 def sync_to_channels(video: str, title: str, workdir: str,
-                     description: str = "", headless: bool = True,
+                     description: str = "", topics: Optional[List[str]] = None,
+                     headless: bool = True,
                      cover: Optional[str] = None,
                      profile: Optional[str] = None) -> bool:
     """上传成片到视频号草稿箱。返回是否成功（失败不影响成片）。
 
     参数:
         video:       成片 mp4 绝对路径（必须存在）
-        title:       视频号标题（优先用封面标题）
+        title:       视频号短标题（优先用封面标题）
         workdir:     工作目录（存二维码截图/上传截图）
-        description: 视频描述（可选，默认空）
+        description: 视频描述（建议 50~150 字的内容摘要 + 话题标签）
+        topics:      话题标签列表（如 ["#进销存", "#财务软件", "#商贸管理"]），
+                     会点击「#话题」按钮逐个添加；若 description 已含 #标签
+                     则可省略此参数（代码会从 description 自动提取）
         headless:    是否无头模式（首次登录建议 False 便于肉眼确认；
                      之后 True 自动，cookies 已持久化在 profile）
         cover:       封面图路径（可选，视频号可自动抽帧，可不传）
@@ -196,15 +225,38 @@ def sync_to_channels(video: str, title: str, workdir: str,
             page.screenshot(path=os.path.join(workdir, "channels_uploaded.png"))
             print("  [视频号] 上传后截图 -> channels_uploaded.png")
 
-            # ---- 填标题 / 描述 ----
+            # ---- 填写短标题（必填，影响流量推荐）----
             t = (title or "").strip()
             if t:
-                print(f"  [视频号] 填写标题: {t}")
-                _fill_text(page, SEL_TITLE_INPUT, t)
+                print(f"  [视频号] 填写短标题: {t}")
+                ok_title = _fill_text(page, SEL_TITLE_INPUTS, t)
+                if not ok_title:
+                    print("  [视频号] ⚠️ 短标题未填入（选择器可能变了），尝试 JS 兜底…", file=sys.stderr)
+                    _fill_text_js(page, t, is_title=True)
+            else:
+                print("  [视频号] ⚠️ 标题为空，跳过填写（短标题影响流量推荐，建议传入）",
+                      file=sys.stderr)
 
-            if description:
-                print("  [视频号] 填写描述")
-                _fill_text(page, SEL_DESC_INPUT, description)
+            # ---- 填写视频描述（含内容摘要）----
+            desc = (description or "").strip()
+            if desc:
+                print(f"  [视频号] 填写视频描述 ({len(desc)} 字)")
+                ok_desc = _fill_text(page, SEL_DESC_INPUTS, desc)
+                if not ok_desc:
+                    print("  [视频号] ⚠️ 描述未填入（选择器可能变了），尝试 JS 兜底…", file=sys.stderr)
+                    _fill_text_js(page, desc, is_title=False)
+            else:
+                print("  [视频号] ⚠️ 描述为空，跳过填写", file=sys.stderr)
+
+            # ---- 添加话题标签（#话题 按钮 → 输入 → 回车确认）----
+            all_topics = list(topics or [])
+            # 如果没显式传 topics 但 description 里含 #xxx 格式标签，自动提取
+            if not all_topics and desc:
+                import re
+                all_topics = re.findall(r'#[\u4e00-\u9fa5a-zA-Z0-9_]+', desc)
+            if all_topics:
+                print(f"  [视频号] 添加话题标签: {all_topics}")
+                _fill_topics(page, all_topics)
 
             # 封面（可选；视频号通常自动取第一帧）
             if cover and os.path.exists(cover):
@@ -218,8 +270,12 @@ def sync_to_channels(video: str, title: str, workdir: str,
                 except Exception as e:  # noqa
                     print(f"  [视频号] ⚠️ 设置封面失败（可接受）: {e}")
 
-            # 标题/封面设置后等按钮可用
-            page.wait_for_timeout(2500)
+            # 所有字段填完后等一下让页面稳定
+            page.wait_for_timeout(2000)
+
+            # 截图记录填写结果（方便排查）
+            page.screenshot(path=os.path.join(workdir, "channels_filled.png"))
+            print("  [视频号] 填写完成截图 -> channels_filled.png")
 
             # ---- 存草稿（不发布）----
             print("  [视频号] 点击「保存草稿」…")
@@ -345,27 +401,152 @@ def _verify_draft_added(page) -> bool:
         return False
 
 
-def _fill_text(page, selector, text: str) -> bool:
+def _fill_text(page, selectors: List[str], text: str) -> bool:
     """填充输入框（多个候选选择器逐个尝试）。"""
-    sels = [selector] if isinstance(selector, str) else selector
-    for sel in sels:
+    for sel in selectors:
         try:
             el = page.locator(sel).first
             if el.count() > 0 and el.is_visible(timeout=1500):
                 el.click(timeout=2000)
                 el.fill(text, timeout=5000)
+                print(f"    ✓ 选择器 '{sel}' 匹配成功，已填入")
                 return True
-        except Exception:  # noqa
+        except Exception as e:
             continue
-    # 兜底：找任何可见 input/textarea 填
-    try:
-        el = page.locator('input[type="text"], textarea').first
-        if el.count() > 0 and el.is_visible(timeout=1500):
-            el.fill(text, timeout=5000)
-            return True
-    except Exception:  # noqa
-        pass
+    print(f"    ✗ 所有 {len(selectors)} 个选择器均未匹配", file=sys.stderr)
     return False
+
+
+def _fill_text_js(page, text: str, is_title: bool = True) -> None:
+    """JS 兜底：用 evaluate 直接操作 DOM 填入文本（当 Playwright 选择器全部失效时）。
+
+    通过 placeholder 文本定位元素，模拟用户输入（先 focus → 设 value →
+    dispatch input 事件触发 React/Vue 双向绑定）。
+    """
+    tag = "input" if is_title else "textarea"
+    hint = "短标题" if is_title else "添加描述"
+    js_code = f"""
+    (() => {{
+        const els = document.querySelectorAll('{tag}');
+        for (const el of els) {{
+            const ph = (el.placeholder || '') + (el.getAttribute('data-placeholder') || '');
+            if (ph.includes('{hint}') || ph.includes('描述') || ph.includes('标题')) {{
+                el.focus();
+                el.value = `{text.replace('`', '\\`').replace('\\', '\\\\')}`;
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                return true;
+            }}
+        }}
+        return false;
+    }})()
+    """
+    try:
+        result = page.evaluate(js_code)
+        if result:
+            print(f"    ✓ JS 兜底填入成功（{tag}）")
+        else:
+            print(f"    ✗ JS 兜底也未找到目标 {tag}", file=sys.stderr)
+    except Exception as e:
+        print(f"    ✗ JS 兜底异常: {e}", file=sys.stderr)
+
+
+def _fill_topics(page, topics: List[str]) -> None:
+    """在视频号编辑页添加话题标签。
+
+    流程：点击「#话题」按钮 → 弹出输入框 → 输入话题文字（不含#）→
+          回车 / 点击搜索结果确认 → 重复下一个话题。
+
+    视频号的 #话题 是一个特殊组件（类似 mention/tag picker），不是纯文本输入，
+    所以不能用 fill 直接写入 textarea。
+    """
+    for i, topic in enumerate(topics):
+        # 清理格式：确保以 # 开头
+        raw = topic.strip().lstrip('#')
+        if not raw:
+            continue
+        display = f"#{raw}"
+        print(f"    [{i+1}/{len(topics)}] 添加话题: {display}")
+
+        # 步骤 1：点击 #话题 按钮
+        clicked = False
+        for sel in SEL_TOPIC_BTN:
+            try:
+                btn = page.locator(sel).first
+                if btn.count() > 0 and btn.is_visible(timeout=2000):
+                    btn.click(timeout=3000)
+                    clicked = True
+                    print(f"      ✓ 点击了话题按钮 ({sel})")
+                    break
+            except Exception:
+                continue
+        if not clicked:
+            print(f"      ✗ 未找到 #话题 按钮，跳过此话题", file=sys.stderr)
+            continue
+
+        # 步骤 2：等弹出话题输入/搜索框
+        page.wait_for_timeout(1000)
+
+        # 步骤 3：在弹出的输入框中输入话题关键词（不含 #）
+        topic_entered = False
+        # 尝试多种可能的输入方式
+        try:
+            # 方式 A：找刚出现的 input（可能是搜索框）
+            active_input = page.locator('input[class*="search"], '
+                                       'input[placeholder*="搜索"], '
+                                       'input[placeholder*="话题"], '
+                                       '.ant-select input, '
+                                       '[class*="tag"] input, '
+                                       '[class*="topic"] input').first
+            if active_input.count() > 0 and active_input.is_visible(timeout=2000):
+                active_input.fill(raw, timeout=3000)
+                topic_entered = True
+                print(f"      ✓ 输入了话题关键词: {raw}")
+        except Exception:
+            pass
+
+        if not topic_entered:
+            # 方式 B：键盘直接输入（焦点可能在弹出的输入框上）
+            try:
+                page.keyboard.type(raw, delay=50)
+                topic_entered = True
+                print(f"      ✓ 键盘输入了话题关键词: {raw}")
+            except Exception:
+                pass
+
+        if not topic_entered:
+            print(f"      ✗ 无法输入话题关键词，跳过", file=sys.stderr)
+            # 按 Escape 关闭可能的弹窗
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            continue
+
+        # 步骤 4：等搜索结果出现，回车或点击第一个结果确认
+        page.wait_for_timeout(1500)
+        try:
+            # 尝试按回车确认
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(800)
+            print(f"      ✓ 回车确认话题: {display}")
+        except Exception:
+            try:
+                # 回车不行就尝试点击搜索结果
+                result_item = page.locator('[class*="option"]:visible, '
+                                           '[class*="item"]:visible, '
+                                           '[class*="result"]:visible, '
+                                           'li:visible').first
+                if result_item.count() > 0:
+                    result_item.click(timeout=2000)
+                    print(f"      ✓ 点击确认话题: {display}")
+            except Exception:
+                print(f"      ⚠️ 话题可能未完全确认（但已尝试）", file=sys.stderr)
+
+        # 等话题标签渲染到描述区
+        page.wait_for_timeout(800)
+
+    print(f"  [视频号] 话题标签添加完毕")
 
 
 def _save_draft(page) -> bool:
@@ -389,8 +570,10 @@ def main_cli(argv=None):
     import argparse
     ap = argparse.ArgumentParser(description="上传视频到视频号草稿箱")
     ap.add_argument("video", help="成片 mp4 路径")
-    ap.add_argument("--title", default="", help="视频号标题")
-    ap.add_argument("--desc", default="", help="视频描述")
+    ap.add_argument("--title", default="", help="视频号短标题")
+    ap.add_argument("--desc", default="", help="视频描述（内容摘要，50~150字）")
+    ap.add_argument("--topics", default="", nargs="+",
+                    help="话题标签（如 #进销存 #财务软件 #商贸管理）")
     ap.add_argument("--workdir", default="./_work", help="工作目录（存登录态）")
     ap.add_argument("--cover", default=None, help="封面图路径（可选）")
     ap.add_argument("--headed", action="store_true", help="有头模式（首次登录建议）")
@@ -398,7 +581,8 @@ def main_cli(argv=None):
                     help="persistent profile 目录（默认 ~/.workbuddy/channels_profile）")
     args = ap.parse_args(argv)
     ok = sync_to_channels(args.video, args.title, args.workdir,
-                          description=args.desc, headless=not args.headed,
+                          description=args.desc, topics=args.topics,
+                          headless=not args.headed,
                           cover=args.cover, profile=args.profile)
     sys.exit(0 if ok else 1)
 

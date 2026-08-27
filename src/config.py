@@ -178,7 +178,8 @@ class Config:
     sync_channel_enabled: bool = False   # render 完成后自动上传到视频号草稿
     channel_headless: bool = True        # 无头模式（首次登录建议 False 便于肉眼确认）
     channel_title: str = ""              # 视频号标题（空 = 用封面标题/自动提炼）
-    channel_desc: str = ""               # 视频描述（可选）
+    channel_desc: str = ""               # 视频描述（可选，内容摘要 50~150 字）
+    channel_topics: str = ""             # 视频号话题标签（逗号分隔，如 "#进销存,#财务软件,#商贸管理"）
 
     @classmethod
     def load(cls, **overrides) -> "Config":
@@ -236,6 +237,7 @@ class Config:
             in ("1", "true", "yes"),
             channel_title=env("CHANNEL_TITLE", cls.channel_title),
             channel_desc=env("CHANNEL_DESC", cls.channel_desc),
+            channel_topics=env("CHANNEL_TOPICS", cls.channel_topics),
             beep_volume=float(env("BEEP_VOLUME", cls.beep_volume)),
         )
         # LLM Key 缺失时自动关闭

@@ -198,9 +198,12 @@ def _cmd_sync(args):
     wd = os.path.abspath(args.workdir or "./_work")
     os.makedirs(wd, exist_ok=True)
     title = args.title or getattr(args, "cover_title", "") or ""
+    # 话题标签：显式传参 > 从描述自动提取
+    topics = getattr(args, "topics", None) or []
     ok = channel_sync.sync_to_channels(
         video, title, wd,
         description=getattr(args, "desc", "") or "",
+        topics=topics,
         headless=not getattr(args, "headed", False),
         cover=getattr(args, "cover", None),
         profile=getattr(args, "profile", None))
@@ -341,9 +344,13 @@ def _cmd_auto(args):
                 or (getattr(plan, "cover", {}) or {}).get("title", "") \
                 or getattr(cfg, "cover_title", "") or ""
             desc = getattr(cfg, "channel_desc", "") or ""
+            # 话题标签：从配置读取（逗号/空格分隔的字符串 → 列表）
+            raw_topics = getattr(cfg, "channel_topics", "") or ""
+            topics_list = [t.strip() for t in raw_topics.replace("，", ",").split(",") if t.strip()] if raw_topics else []
             ok = channel_sync.sync_to_channels(
                 output, title, cfg.workdir,
                 description=desc,
+                topics=topics_list if topics_list else None,
                 headless=getattr(cfg, "channel_headless", True),
                 cover=cover)
             if ok:
@@ -438,7 +445,9 @@ def main():
         ps.add_argument("input", help="成片视频路径 (mp4)")
         ps.add_argument("--title", default=None,
                         help="视频号标题（默认用封面标题）")
-        ps.add_argument("--desc", default=None, help="视频描述（可选）")
+        ps.add_argument("--desc", default=None, help="视频描述（可选，建议 50~150 字内容摘要）")
+        ps.add_argument("--topics", nargs="+", default=None,
+                        help="话题标签（如 #进销存 #财务软件 #商贸管理，3~5 个）")
         ps.add_argument("--cover", default=None, help="封面图路径（可选）")
         ps.add_argument("--headed", action="store_true",
                         help="有头模式（首次登录建议开启，便于扫码确认）")

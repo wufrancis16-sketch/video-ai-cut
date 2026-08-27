@@ -163,37 +163,60 @@ python main.py "<视频>" --skip-review
 AVEditor_USE_LLM=false python main.py "<视频>"
 ```
 
-### 智能体生成封面标题（零外部 Key · 推荐给同事）
+### 智能体生成封面标题 + 描述 + 话题标签（零外部 Key · 推荐给同事）
 
-`video-ai-cut` 经由智能体（WorkBuddy / Codex）调用时，**封面标题由智能体自带的 LLM 生成**，无需为同事配置任何外部 LLM Key。流程为「先分析拿字幕 → 智能体出标题 → 注入 render」，避免重跑 ASR：
+`video-ai-cut` 经由智能体（WorkBuddy / Codex）调用时，**封面标题、视频描述、话题标签均由智能体自带的 LLM 生成**，无需为同事配置任何外部 LLM Key。流程为「先分析拿字幕 → 智能体出标题+描述+话题 → 注入 render → sync 填入」，避免重跑 ASR：
 
 ```bash
 # 1) 分析（无需 Key，敏感/议价走关键词兜底）：产出 plan.json + 审核清单.txt
 python main.py analyze "<用户视频绝对路径>" --workdir <wd>
 
-# 2) 读取 <wd>/plan.json 里 subtitle_cues[*].text 拼接成字幕，用下面 prompt 让智能体生成 1 个标题
-#    （标题同时用作成片封面与视频号草稿标题）
+# 2) 读取 <wd>/plan.json 里 subtitle_cues[*].text 拼接成字幕，用下面 prompt 让智能体一次性生成：
+#    - 标题（≤20 字，同时用作成片封面与视频号短标题）
+#    - 描述（50~150 字，视频内容摘要，末尾带 #话题标签）
+#    - 3 个话题标签（如 #进销存 #财务软件 #商贸管理）
 
 # 3) 渲染并把标题注入 plan.cover（render 与 sync 都读到同一标题）
 python main.py render "<用户视频绝对路径>" --plan <wd>/plan.json --cover-title "<生成的标题>" -o <成片路径>
 
-# 4) 可选：上传视频号草稿（标题沿用，不发布；首次加 --headed 扫码一次）
-python main.py sync "<成片路径>" --title "<生成的标题>"
+# 4) 上传视频号草稿（自动填好短标题 + 描述 + 话题标签；首次加 --headed 扫码一次）
+python main.py sync "<成片路径>" --title "<生成的标题>" \
+     --desc "<生成的描述>" --topics <话题1> <话题2> <话题3>
 ```
 
-**智能体生成标题的 prompt（直接照用，保证质量）：**
+**智能体生成内容的 prompt（直接照用，一次性产出标题+描述+话题）：**
 
 ```
-你是短视频运营。根据下面的视频字幕内容，生成 1 个适合作为封面标题 / 视频号标题的短句（≤20 字）。
+你是短视频运营。根据下面的视频字幕内容，生成以下三项内容：
+
+【1】封面标题 / 视频号短标题（≤20 字）
 要求：
 ① 前 8 字内必须有钩子（痛点 / 疑问 / 数字 / 反差）；
 ② 必须包含具体行业或场景词（如 化工批发 / 进销存 / 对账 / Excel / 库存）；
-③ 落到痛点或收益，不要只做平铺概括；
-④ 只返回标题本身，不要引号、不要解释。
+③ 落到痛点或收益，不要只做平铺概括。
+
+【2】视频描述（50~150 字）
+要求：
+① 用 2~3 句话概括视频核心内容（讲了什么问题、给了什么方案、有什么好处）；
+② 口语化、有吸引力，像在跟朋友推荐；
+③ 末尾换行附上 3 个 #话题标签（见下方第 3 项）。
+
+【3】话题标签（3 个，格式 #词）
+要求：
+① 必须与视频内容强相关（行业词 / 痛点词 / 场景词）；
+② 覆盖不同角度（不要 3 个都是同一个意思）；
+③ 每个标签 2~6 字，简洁有力。
+示例：#进销存 #商贸管理 #库存盘点
+
+输出格式（严格按此格式，方便程序解析）：
+TITLE: <标题>
+DESC: <描述>
+TOPICS: #话题1 #话题2 #话题3
+
 <字幕内容>
 ```
 
-> 说明：纯命令行独立运行 `main.py`（无智能体托管）时，标题只能来自 `AVEditor_LLM_*`（可选配置）或手动 `--cover-title`，否则留空。经智能体使用时无需任何配置，开箱即用。
+> 说明：纯命令行独立运行 `main.py`（无智能体托管）时，标题/描述/话题只能来自 `AVEditor_CHANNEL_*`（可选配置）或手动参数，否则留空。经智能体使用时无需任何配置，开箱即用。
 
 - 默认输出：`<视频所在目录>/edit/final_video.mp4`、`<视频所在目录>/edit/cover.png`；`plan.json` 与 `审核清单.txt` 在 `workdir`（默认 `./_work`，可用 `--workdir` 指定）。
 - 依赖缺失时 `main.py` 会**自动 `pip install`**；ffmpeg 缺失会提示安装方式。
@@ -222,7 +245,7 @@ python main.py sync "<成片路径>" --title "<生成的标题>"
 | `confirm --plan <plan.json> --action delete\|keep [--items 1,2\|--all]` | 人工确认待确认项：将指定项转 `delete_segments`（delete）或从清单移除（keep），写回 plan |
 | `review --plan <plan.json>` | 交互式审核待确认项（终端 TUI），写回 plan.json |
 | `render <input> --plan <plan.json> -o <out> [--cover-title "标题"]` | 按 plan 渲染成片（只读 plan，不重新分析）；`--cover-title` 注入智能体生成的标题并写入 plan.cover（render 与 sync 共用） |
-| `sync <input> --title "标题" [--desc "描述"] [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
+| `sync <input> --title "标题" --desc "描述" --topics #话题1 #话题2 [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。自动填好**短标题 + 视频描述 + 3 个话题标签**，保存后可直接点「发表」。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
 | （无子命令）`<input>` | 全自动：analyze → **inspect（v6 OCR 判定，命中企微自动删）** → render |
 
 > **阶段顺序（硬性，需求#9）**：`analyze → inspect → review → render`。`inspect`（高风险画面两级巡检）是固定步骤，**必须在 `render` 之前完成**；漏跑会导致企业微信/微信/通讯录等隐私界面残留在成片里。全自动模式（无子命令）已内置该顺序；分阶段手动跑时必须自行在 `render` 前执行 `inspect`（其结果是追加写入 `plan.json`，不会覆盖 `analyze` 已产出的 `delete_segments`/`review_items`）。
