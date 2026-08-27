@@ -57,11 +57,17 @@ def _ensure_ffmpeg() -> bool:
 
 def _ensure_deps(auto_install: bool) -> bool:
     """检查 Python 依赖，缺失时尝试自动安装。"""
+    # 核心依赖（缺任何一个，主流程会在中途崩 / 触发企微检测时才报 ImportError）。
+    # 只要缺任一，即触发 `pip install -r requirements.txt` 一次性补齐（含 rapidocr / playwright）。
+    # playwright 是视频号同步的可选依赖，保持惰性导入（channel_sync 内 try/except），不在此强制，
+    # 避免无网环境下因装不上 playwright 而阻断纯剪辑主流程。
     required = {
         "faster_whisper": "faster-whisper",
         "openai": "openai",
         "PIL": "pillow",
         "numpy": "numpy",
+        "requests": "requests",
+        "rapidocr_onnxruntime": "rapidocr-onnxruntime",
     }
     missing = []
     for mod, pkg in required.items():
@@ -178,8 +184,16 @@ def _cmd_render(args):
         except Exception as e:  # noqa
             print(f"  [warn] 写回 plan.cover.title 失败（仍按本次渲染使用）: {e}")
     video = os.path.abspath(args.input)
-    output, _ = _default_outputs(video, args.output)
+    output, default_cover = _default_outputs(video, args.output, args.cover)
     render.render(plan, cfg, output, video)
+    # 把渲染生成的封面（默认在 workdir/cover.png）复制到用户指定的封面路径
+    target_cover = os.path.abspath(args.cover or default_cover)
+    src_cover = os.path.join(cfg.workdir, "cover.png")
+    if os.path.exists(src_cover) and os.path.abspath(src_cover) != target_cover:
+        import shutil
+        os.makedirs(os.path.dirname(target_cover) or ".", exist_ok=True)
+        shutil.copy(src_cover, target_cover)
+        print(f"  [封面] 已复制到 -> {target_cover}")
     print(f"[完成] 渲染阶段结束。成片 -> {output}")
 
 
@@ -436,6 +450,8 @@ def main():
         pr2.add_argument("input", help="输入视频路径 (mp4)")
         pr2.add_argument("--plan", default=None, help="plan.json 路径")
         pr2.add_argument("-o", "--output", default=None, help="输出视频路径")
+        pr2.add_argument("--cover", default=None,
+                        help="封面输出路径（默认 <输入目录>/edit/cover.png）")
         pr2.add_argument("--cover-title", default=None,
                         help="强制指定封面/视频号标题（优先于 plan.json，"
                              "供智能体调用自身 LLM 生成后注入，避免重跑 ASR）")
