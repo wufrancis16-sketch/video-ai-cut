@@ -165,43 +165,50 @@ AVEditor_USE_LLM=false python main.py "<视频>"
 
 ### 智能体生成封面标题 + 描述 + 话题标签（零外部 Key · 推荐给同事）
 
-`video-ai-cut` 经由智能体（WorkBuddy / Codex）调用时，**封面标题、视频描述、话题标签均由智能体自带的 LLM 生成**，无需为同事配置任何外部 LLM Key。流程为「先分析拿字幕 → 智能体出标题+描述+话题 → 注入 render → sync 填入」，避免重跑 ASR：
+`video-ai-cut` 经由智能体（WorkBuddy / Codex）调用时，**封面标题、视频号短标题、视频描述、话题标签均由智能体自带的 LLM 生成**，无需为同事配置任何外部 LLM Key。流程为「先分析拿字幕 → 智能体出标题+描述+话题 → 注入 render → sync 填入」，避免重跑 ASR：
 
 ```bash
 # 1) 分析（无需 Key，敏感/议价走关键词兜底）：产出 plan.json + 审核清单.txt
 python main.py analyze "<用户视频绝对路径>" --workdir <wd>
 
 # 2) 读取 <wd>/plan.json 里 subtitle_cues[*].text 拼接成字幕，用下面 prompt 让智能体一次性生成：
-#    - 标题（≤20 字，同时用作成片封面与视频号短标题）
+#    - 封面标题 TITLE（≤20 字，成片封面用，可稍长更吸引人）
+#    - 视频号短标题 SHORT_TITLE（≤16 字符！视频号后台硬限制，超出无法保存草稿）
 #    - 描述（50~150 字，视频内容摘要，末尾带 #话题标签）
 #    - 3 个话题标签（如 #进销存 #财务软件 #商贸管理）
 
-# 3) 渲染并把标题注入 plan.cover（render 与 sync 都读到同一标题）
-python main.py render "<用户视频绝对路径>" --plan <wd>/plan.json --cover-title "<生成的标题>" -o <成片路径>
+# 3) 渲染并把【封面标题】注入 plan.cover（封面标题不受 16 字符限制，可 ≥16 字）
+python main.py render "<用户视频绝对路径>" --plan <wd>/plan.json --cover-title "<TITLE>" -o <成片路径>
 
-# 4) 上传视频号草稿（自动填好短标题 + 描述 + 话题标签；首次加 --headed 扫码一次）
-python main.py sync "<成片路径>" --title "<生成的标题>" \
+# 4) 上传视频号草稿（短标题必须 ≤16 字符，用 SHORT_TITLE；自动填标题+描述+话题；首次加 --headed 扫码一次）
+python main.py sync "<成片路径>" --title "<SHORT_TITLE>" \
      --desc "<生成的描述>" --topics <话题1> <话题2> <话题3>
 ```
 
 **智能体生成内容的 prompt（直接照用，一次性产出标题+描述+话题）：**
 
 ```
-你是短视频运营。根据下面的视频字幕内容，生成以下三项内容：
+你是短视频运营。根据下面的视频字幕内容，生成以下四项内容：
 
-【1】封面标题 / 视频号短标题（≤20 字）
+【1】封面标题 TITLE（≤20 字，印在成片封面上，可稍长更吸睛）
 要求：
 ① 前 8 字内必须有钩子（痛点 / 疑问 / 数字 / 反差）；
 ② 必须包含具体行业或场景词（如 化工批发 / 进销存 / 对账 / Excel / 库存）；
 ③ 落到痛点或收益，不要只做平铺概括。
 
-【2】视频描述（50~150 字）
+【2】视频号短标题 SHORT_TITLE（≤16 字符，⚠️ 视频号后台硬限制，超出无法保存草稿！）
+要求：
+① 从 TITLE 精简而来，保留钩子和行业词，砍掉修饰语；
+② 严格 ≤16 个字符（中文字、数字、字母都算 1 个），超了会被截断丢语义；
+③ 语义完整独立，不依赖 TITLE 才能看懂。
+
+【3】视频描述（50~150 字）
 要求：
 ① 用 2~3 句话概括视频核心内容（讲了什么问题、给了什么方案、有什么好处）；
 ② 口语化、有吸引力，像在跟朋友推荐；
-③ 末尾换行附上 3 个 #话题标签（见下方第 3 项）。
+③ 末尾换行附上 3 个 #话题标签（见下方第 4 项）。
 
-【3】话题标签（3 个，格式 #词）
+【4】话题标签（3 个，格式 #词）
 要求：
 ① 必须与视频内容强相关（行业词 / 痛点词 / 场景词）；
 ② 覆盖不同角度（不要 3 个都是同一个意思）；
@@ -209,7 +216,8 @@ python main.py sync "<成片路径>" --title "<生成的标题>" \
 示例：#进销存 #商贸管理 #库存盘点
 
 输出格式（严格按此格式，方便程序解析）：
-TITLE: <标题>
+TITLE: <封面标题(≤20字)>
+SHORT_TITLE: <视频号短标题(≤16字符)>
 DESC: <描述>
 TOPICS: #话题1 #话题2 #话题3
 
@@ -244,8 +252,8 @@ TOPICS: #话题1 #话题2 #话题3
 | `inspect <input> --plan <plan.json>` | 高风险画面巡检（**v6：OCR 强词+Windows否决**），对每帧左栏跑 RapidOCR（1280 宽抽帧），命中企微专属词或 ≥2 强词(邮件/文档/日程/会议) 且无 Windows 否决即自动写 `delete_segments`，精准区分企微与畅捷通等同构 SaaS 及 Windows 桌面 |
 | `confirm --plan <plan.json> --action delete\|keep [--items 1,2\|--all]` | 人工确认待确认项：将指定项转 `delete_segments`（delete）或从清单移除（keep），写回 plan |
 | `review --plan <plan.json>` | 交互式审核待确认项（终端 TUI），写回 plan.json |
-| `render <input> --plan <plan.json> -o <out> [--cover-title "标题"]` | 按 plan 渲染成片（只读 plan，不重新分析）；`--cover-title` 注入智能体生成的标题并写入 plan.cover（render 与 sync 共用） |
-| `sync <input> --title "标题" --desc "描述" --topics #话题1 #话题2 [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。自动填好**短标题 + 视频描述 + 3 个话题标签**，保存后可直接点「发表」。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
+| `render <input> --plan <plan.json> -o <out> [--cover-title "标题"]` | 按 plan 渲染成片（只读 plan，不重新分析）；`--cover-title` 注入智能体生成的标题并写入 plan.cover（**封面标题不受 16 字符限制**，可 ≤20 字） |
+| `sync <input> --title "标题" --desc "描述" --topics #话题1 #话题2 [--cover 封面]` | 把成片上传到**视频号草稿箱**（不发布）。自动填好**短标题 + 视频描述 + 3 个话题标签**，保存后可直接点「发表」。**⚠️ 短标题硬限制 16 字符，超出无法保存草稿——代码会强制截断到 16 字符并打印提示**（封面标题走另一条路径不受此限）。登录态用 `launch_persistent_context` 持久化在 `~/.workbuddy/channels_profile`（与真实 Chrome 隔离）：**首次加 `--headed` 扫码一次**，之后**免扫码**直接上传。上传后等"封面/描述/页面初始化"全部完成再点「保存草稿」，并验证草稿箱数量 >0。全自动模式下可用 `AVEditor_SYNC_CHANNEL_ENABLED=true` 在 render 后自动触发 |
 | （无子命令）`<input>` | 全自动：analyze → **inspect（v6 OCR 判定，命中企微自动删）** → render |
 
 > **阶段顺序（硬性，需求#9）**：`analyze → inspect → review → render`。`inspect`（高风险画面两级巡检）是固定步骤，**必须在 `render` 之前完成**；漏跑会导致企业微信/微信/通讯录等隐私界面残留在成片里。全自动模式（无子命令）已内置该顺序；分阶段手动跑时必须自行在 `render` 前执行 `inspect`（其结果是追加写入 `plan.json`，不会覆盖 `analyze` 已产出的 `delete_segments`/`review_items`）。
@@ -322,3 +330,4 @@ TOPICS: #话题1 #话题2 #话题3
 - 封面标题风格可选 5 套（`cover_style`）；如需新增风格在 `cover.STYLE_PRESETS` 扩展。
 - 议价检测依赖 ASR 文本质量，tiny 模型误识率较高，建议 small/medium；无法 100% 覆盖口语化议价，建议结合 审核清单 人工复核。
 - 高风险画面检测第一版仅「整段删除 / 交人工确认」不打码；启发式（`heuristic` 模式）较弱，建议配置视觉 LLM（`sensitive_screen_mode=vision/auto` + 多模态模型）。置信度不足者已标记「待人工确认」。
+- **视频号上传的账号权限硬障碍（非代码问题）**：`sync` 上传前会自动检测两类阻断弹窗并**立即失败、给出明确处理办法**，不再假报"已点击/可能保存失败"：① `no_permission` —— 编辑页显示「你还不能发表视频 当前登录账号不是视频号…的管理员或运营者」，`保存草稿`按钮处于 `weui-desktop-btn_disabled`；② `admin_verify` —— 出现「管理员本人验证 需管理员扫码验证」弹窗。两者都需人工处理：用**视频号管理员/运营者**账号重新登录（删 `~/.workbuddy/channels_profile` 让其重新扫码），或让管理员把当前账号加为运营者，或完成管理员扫码验证后重跑。草稿箱数量读取依赖左侧「草稿箱(N)」文本，无权限账号会被重定向首页读到 `-1`，此时以"点击成功即可能已存"提示用户去视频号后台人工确认。
