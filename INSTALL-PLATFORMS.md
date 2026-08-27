@@ -119,7 +119,29 @@ git -C ~/.codex/skills/video-ai-cut pull            # Codex
 4. **首次剪辑**：自动下载 whisper 模型（~460MB），需几分钟
 5. **视频号草稿同步**（可选）：`pip install playwright` + 首次 `--headed` 扫码，详见 `INSTALL.md`「三.5」
 
-## 六、常见问题
+## 六、macOS 用户注意事项（2026-08-27 起已全功能支持）
+
+**安装：**
+```bash
+# 1) 先装好前置（Mac 自带 python3 是 3.9，偏旧，务必装新版）
+brew install python@3.13 ffmpeg git
+
+# 2) 安装技能（WorkBuddy 用户）
+git clone --depth 1 https://github.com/wufrancis16-sketch/video-ai-cut.git ~/.workbuddy/skills/video-ai-cut && cd ~/.workbuddy/skills/video-ai-cut && bash install.sh
+```
+GitHub 慢/打不开（用镜像）：
+```bash
+git clone --depth 1 https://ghproxy.com/https://github.com/wufrancis16-sketch/video-ai-cut.git ~/.workbuddy/skills/video-ai-cut && cd ~/.workbuddy/skills/video-ai-cut && bash install.sh
+```
+
+**使用注意：**
+1. **用 `python3` 运行**（不用管 SKILL.md「本机运行环境」里的 Windows managed Python 路径，那是 Windows 专属铁律）
+2. **Whisper 模型自动缓存**在 `~/.cache/aveditor/models`，首次剪辑自动下载（~460MB），无需手动配置
+3. **渲染自动用 Apple 硬件编码**（`h264_videotoolbox`，auto 模式自动探测）：Mac 长视频提速 5~30 倍；探测失败自动回退 libx264（会慢，属正常）
+4. **视频号上传自动找本机浏览器**：`/Applications/Google Chrome.app`（或 Edge / Chromium、`~/Applications`、PATH），**首次加 `--headed` 扫码一次**，之后免扫码
+5. `verify_skill.py` 自检的 ffmpeg 回退路径是 Windows 硬编码，Mac 上以 `brew install ffmpeg` 后的 PATH 探测为准（`shutil.which` 能找到即 PASS）
+
+## 七、常见问题
 
 | 问题 | 解决 |
 |------|------|
