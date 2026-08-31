@@ -149,5 +149,7 @@ git clone --depth 1 https://ghproxy.com/https://github.com/wufrancis16-sketch/vi
 | `pip install` 慢 | `pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple` |
 | GitHub clone 超时 | 用 `https://ghproxy.com/` 镜像前缀 |
 | `git pull` 报 **SSL certificate has expired** | ghproxy 镜像证书过期（常见）。修复：`git remote set-url origin https://github.com/wufrancis16-sketch/video-ai-cut.git && git pull`（直连）；或换镜像：把 URL 里 `ghproxy.net` 改成 `ghproxy.com` |
+| Mac 上所有 GitHub 镜像都连不上（443 超时/504） | 网络环境限制，按顺序换镜像重试：`kkgithub.com` → `gitclone.com` → `ghproxy.com` → 直连 `github.com`（见下方「镜像切换命令」）；全不通则开 VPN 后让 git 走本地代理：`git config --global http.proxy http://127.0.0.1:7890` |
+
 | verify 报 ffmpeg 缺失 | 重开命令行（PATH 刷新）；或手动装 FFmpeg |
 | 处理耗时长 | 正常：企微 OCR 全片扫描为主瓶颈，30 分钟视频约 1.5-2 小时（详见 INSTALL-QUICK.md「时长说明」）|
