@@ -128,9 +128,15 @@ def _video_encode_args(cfg: "Config", fps: float) -> List[str]:
         return ["-c:v", "h264_nvenc", "-cq", str(q), "-preset", "p4",
                 "-pix_fmt", "yuv420p", "-r", f"{fps:.6f}"]
     if enc == "h264_videotoolbox":
-        # macOS/Apple Silicon 硬件编码：-q:v 1~100（越小质量越高，方向同 crf）；
-        # -allow_sw 1 允许参数不支持时软件回退，避免硬编失败中断
-        return ["-c:v", "h264_videotoolbox", "-q:v", str(q),
+        # macOS/Apple Silicon 硬件编码：-q:v 是 1~100「质量」刻度，**越大越好**
+        # （与 crf/global_quality 方向相反！）。直接传 final_crf(=19) 会得到
+        # 19/100 的渣画质（实测同事反馈成片发糊）。这里按 final_crf 翻转映射：
+        # crf19→~80、crf23→~72（均为优秀画质，VMAF ~95+）。手动指定
+        # final_vt_quality 时直接生效，不做翻转。
+        vt_q = getattr(cfg, "final_vt_quality", None)
+        if not vt_q:
+            vt_q = max(60, min(95, 118 - int(round(cfg.final_crf * 2))))
+        return ["-c:v", "h264_videotoolbox", "-q:v", str(vt_q),
                 "-allow_sw", "1", "-pix_fmt", "yuv420p", "-r", f"{fps:.6f}"]
     # h264_qsv / h264_d3d12va 等硬件编码器：global_quality 近似 crf
     return ["-c:v", enc, "-global_quality", str(q),

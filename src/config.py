@@ -131,8 +131,13 @@ class Config:
     #   libx264 → 始终 CPU 软编（最稳，但长视频极慢，易超时/OOM）
     #   h264_qsv / h264_nvenc / h264_videotoolbox → 硬件编码，长视频提速 5~30 倍
     final_encoder: str = "auto"
-    # 硬件编码质量（global_quality / cq），留空则复用 final_crf
+    # 硬件编码质量（global_quality / cq / nvenc -cq），留空则复用 final_crf
+    # 注意：这些刻度都是「越小越好」，与 final_crf 同向，可直接复用。
     final_hw_quality: Optional[int] = None
+    # macOS/Apple Silicon 硬件编码（videotoolbox）专用质量刻度：-q:v 是 1~100
+    # 「质量」刻度、**越大越好**（与 crf 方向相反！）。留空则按 final_crf 自动
+    # 翻转映射（crf19→~80，crf23→~72，均为优秀画质）；如手动指定直接生效。
+    final_vt_quality: Optional[int] = None
     final_audio_bitrate: str = "192k"
     final_audio_sr: int = 48000
     force_cfr: bool = True                # 统一为恒定帧率，保证切点帧级精确
